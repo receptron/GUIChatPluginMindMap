@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,Symbol.toStringTag,{value:"Module"});const e=require("./core.cjs");exports.SYSTEM_PROMPT=e.SYSTEM_PROMPT;exports.TOOL_DEFINITION=e.TOOL_DEFINITION;exports.TOOL_NAME=e.TOOL_NAME;exports.executeMindMap=e.executeMindMap;exports.pluginCore=e.pluginCore;exports.samples=e.samples;
