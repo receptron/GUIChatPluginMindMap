@@ -571,44 +571,6 @@ export const executeMindMap = async (
   };
 };
 
-/**
- * Merge function for handling parallel tool calls.
- * Merges nodes and connections from newData into currentData,
- * adding only items that don't already exist.
- */
-function mergeMindMapData(
-  currentData: MindMapData,
-  newData: MindMapData
-): MindMapData {
-  const currentNodeIds = new Set(currentData.nodes.map((n) => n.id));
-  const addedNodes = newData.nodes.filter((n) => !currentNodeIds.has(n.id));
-
-  const connKey = (c: MindMapConnection) => `${c.from}->${c.to}`;
-  const currentConnKeys = new Set(
-    (currentData.connections || []).map(connKey)
-  );
-  const addedConnections = (newData.connections || []).filter(
-    (c) => !currentConnKeys.has(connKey(c))
-  );
-
-  // Also merge children arrays
-  const nodeMap = new Map(currentData.nodes.map((n) => [n.id, { ...n }]));
-  for (const newNode of newData.nodes) {
-    const existing = nodeMap.get(newNode.id);
-    if (existing && newNode.children) {
-      const existingChildren = new Set(existing.children || []);
-      const newChildren = newNode.children.filter((c) => !existingChildren.has(c));
-      existing.children = [...(existing.children || []), ...newChildren];
-    }
-  }
-
-  return {
-    ...newData,
-    nodes: [...Array.from(nodeMap.values()), ...addedNodes],
-    connections: [...(currentData.connections || []), ...addedConnections],
-  };
-}
-
 export const pluginCore: ToolPluginCore<
   MindMapData,
   MindMapJsonData,
@@ -619,5 +581,4 @@ export const pluginCore: ToolPluginCore<
   generatingMessage: "Creating mind map...",
   isEnabled: () => true,
   systemPrompt: SYSTEM_PROMPT,
-  merge: mergeMindMapData,
 };
