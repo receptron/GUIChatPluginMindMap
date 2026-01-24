@@ -335,6 +335,55 @@ function connectNodes(
 }
 
 /**
+ * Delete a node and all its descendants from the map
+ */
+function deleteNodeFromMap(
+  map: MindMapData,
+  nodeIdToDelete: string
+): MindMapData {
+  const nodes = map.nodes || [];
+  const connections = map.connections || [];
+
+  // Cannot delete center node
+  if (nodeIdToDelete === map.centerNodeId) {
+    return map;
+  }
+
+  // Collect all node IDs to delete (the node and all its descendants)
+  const idsToDelete = new Set<string>();
+
+  function collectDescendants(nodeId: string) {
+    idsToDelete.add(nodeId);
+    const node = nodes.find((n) => n.id === nodeId);
+    if (node?.children) {
+      node.children.forEach((childId) => collectDescendants(childId));
+    }
+  }
+
+  collectDescendants(nodeIdToDelete);
+
+  // Filter out deleted nodes
+  const remainingNodes = nodes
+    .filter((n) => !idsToDelete.has(n.id))
+    .map((n) => ({
+      ...n,
+      // Remove deleted children from children arrays
+      children: n.children?.filter((childId) => !idsToDelete.has(childId)),
+    }));
+
+  // Filter out connections involving deleted nodes
+  const remainingConnections = connections.filter(
+    (c) => !idsToDelete.has(c.from) && !idsToDelete.has(c.to)
+  );
+
+  return {
+    ...map,
+    nodes: remainingNodes,
+    connections: remainingConnections,
+  };
+}
+
+/**
  * Get existing map data from context or args
  * Prefers context.currentResult.data as it has full structure
  * Will initialize missing arrays (connections) if needed
@@ -489,6 +538,30 @@ export const executeMindMap = async (
       message = `Added "${args.newIdea}" to the mind map`;
       instructions =
         "Confirm the new idea was added. Ask if they want to continue expanding or explore other branches.";
+      break;
+    }
+
+    case "delete_node": {
+      const existingMap = getExistingMapData(context, args.existingMap as MindMapData);
+      if (!existingMap || !args.nodeIdToDelete) {
+        return {
+          toolName: TOOL_NAME,
+          message: "Existing map and node ID are required for deletion",
+          instructions: "Ask which node should be deleted.",
+        };
+      }
+      if (args.nodeIdToDelete === existingMap.centerNodeId) {
+        return {
+          toolName: TOOL_NAME,
+          message: "Cannot delete the center node",
+          instructions: "Tell the user that the center node cannot be deleted.",
+        };
+      }
+      const nodeToDelete = existingMap.nodes.find((n) => n.id === args.nodeIdToDelete);
+      mapData = deleteNodeFromMap(existingMap, args.nodeIdToDelete);
+      message = `Deleted "${nodeToDelete?.text || args.nodeIdToDelete}" from the mind map`;
+      instructions =
+        "Confirm the node was deleted. Ask if they want to make any other changes.";
       break;
     }
 

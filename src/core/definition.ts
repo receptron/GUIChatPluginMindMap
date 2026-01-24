@@ -16,9 +16,9 @@ export const TOOL_DEFINITION: ToolDefinition = {
     properties: {
       action: {
         type: "string",
-        enum: ["create", "add_node", "connect", "update", "rebalance"],
+        enum: ["create", "add_node", "delete_node", "connect", "update", "rebalance"],
         description:
-          "Action to perform: create (new mind map), add_node (add idea to existing node), connect (link two nodes), update (modify existing map), rebalance (recalculate layout for better display)",
+          "Action to perform: create (new mind map), add_node (add idea to existing node), delete_node (remove a node and its connections), connect (link two nodes), update (modify existing map), rebalance (recalculate layout for better display)",
       },
       title: {
         type: "string",
@@ -42,6 +42,10 @@ export const TOOL_DEFINITION: ToolDefinition = {
       newIdea: {
         type: "string",
         description: "New idea to add (for add_node action)",
+      },
+      nodeIdToDelete: {
+        type: "string",
+        description: "ID of the node to delete (for delete_node action). Children of this node will also be deleted.",
       },
       fromNodeId: {
         type: "string",
@@ -72,4 +76,4 @@ export const SYSTEM_PROMPT = `Use ${TOOL_NAME} to create visual mind maps when:
 - Planning projects or workflows
 - Summarizing discussions into visual format
 
-When creating a mind map, start with a clear central idea and branch out with related concepts. Use add_node to expand specific branches and connect to show relationships between non-adjacent ideas.`;
+When creating a mind map, start with a clear central idea and branch out with related concepts. Use add_node to expand specific branches, delete_node to remove unwanted nodes, and connect to show relationships between non-adjacent ideas.`;
