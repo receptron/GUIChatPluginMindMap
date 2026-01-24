@@ -25,12 +25,13 @@ export interface MindMapData {
 }
 /** Arguments passed to the tool */
 export interface MindMapArgs {
-    action: "create" | "add_node" | "connect" | "update" | "rebalance";
+    action: "create" | "add_node" | "delete_node" | "connect" | "update" | "rebalance";
     title?: string;
     centralIdea?: string;
     ideas?: string[];
     parentNodeId?: string;
     newIdea?: string;
+    nodeIdToDelete?: string;
     fromNodeId?: string;
     toNodeId?: string;
     connectionLabel?: string;
