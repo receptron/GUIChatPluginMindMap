@@ -2,23 +2,49 @@
   <div class="size-full bg-slate-100 overflow-hidden">
     <div v-if="mapData" class="size-full relative">
       <!-- Title and Controls -->
-      <div class="absolute top-3 left-3 right-3 z-10 flex justify-between items-center">
-        <h2 class="text-lg font-bold text-gray-800 bg-white px-3 py-1.5 rounded-lg shadow-md border border-gray-200">
+      <div class="absolute top-3 left-3 right-3 z-10 flex justify-between items-center pointer-events-none">
+        <h2 class="text-lg font-bold text-gray-800 bg-white px-3 py-1.5 rounded-lg shadow-md border border-gray-200 pointer-events-auto">
           {{ mapData.title }}
         </h2>
         <button
           @click="rebalance"
-          class="bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white px-4 py-1.5 rounded-lg shadow-md text-sm font-semibold transition-all border border-indigo-700"
+          class="bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white px-4 py-1.5 rounded-lg shadow-md text-sm font-semibold transition-all border border-indigo-700 pointer-events-auto"
         >
           整理
         </button>
       </div>
 
+      <!-- Add Node Input -->
+      <div class="absolute bottom-3 left-3 right-3 z-10 flex gap-2 items-center">
+        <span class="bg-white px-2 py-1.5 rounded-lg shadow-sm text-sm text-gray-600 border border-gray-200 truncate max-w-32">
+          {{ targetNodeText }}
+        </span>
+        <span class="text-gray-400">→</span>
+        <input
+          v-model="newNodeText"
+          type="text"
+          placeholder="新しいノード..."
+          class="flex-1 px-3 py-1.5 rounded-lg border border-gray-300 shadow-sm text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          @keydown.enter="addNode"
+        />
+        <button
+          @click="addNode"
+          :disabled="!newNodeText.trim()"
+          class="bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg shadow-md text-sm font-semibold transition-all border border-indigo-700 disabled:border-gray-400"
+        >
+          追加
+        </button>
+      </div>
+
       <!-- SVG Mind Map -->
       <svg
+        ref="svgRef"
         class="size-full"
         :viewBox="`0 0 ${WIDTH} ${HEIGHT}`"
         preserveAspectRatio="xMidYMid meet"
+        @mousemove="onMouseMove"
+        @mouseup="onMouseUp"
+        @mouseleave="onMouseUp"
       >
         <!-- Connections -->
         <g>
@@ -39,8 +65,8 @@
           v-for="node in mapData.nodes"
           :key="node.id"
           :transform="`translate(${node.x}, ${node.y})`"
-          class="cursor-pointer"
-          @click="expandNode(node)"
+          :class="draggingNodeId === node.id ? 'cursor-grabbing' : 'cursor-grab'"
+          @mousedown.prevent="onMouseDown($event, node)"
         >
           <rect
             :x="-nodeSize(node.text).w / 2"
@@ -49,6 +75,8 @@
             :height="nodeSize(node.text).h"
             rx="6"
             :fill="node.color || '#6366F1'"
+            :stroke="selectedNodeId === node.id ? '#FCD34D' : 'none'"
+            :stroke-width="selectedNodeId === node.id ? 3 : 0"
           />
           <text
             fill="white"
@@ -69,12 +97,6 @@
         </g>
       </svg>
 
-      <!-- Help text -->
-      <div class="absolute bottom-3 left-0 right-0 text-center">
-        <span class="text-xs text-gray-500 bg-white/90 px-2 py-1 rounded shadow-sm">
-          ノードをクリックして展開
-        </span>
-      </div>
     </div>
 
     <div v-else class="size-full flex items-center justify-center">
@@ -84,7 +106,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { ref, watch, computed } from "vue";
 import type { ToolResult } from "gui-chat-protocol";
 import type { MindMapData, MindMapNode } from "../core/types";
 import { TOOL_NAME } from "../core/definition";
@@ -101,13 +123,31 @@ const HEIGHT = 600;
 const CX = WIDTH / 2;
 const CY = HEIGHT / 2;
 const MAX_CHARS = 10;
+// Padding for node placement (avoid UI overlays)
+const PADDING_TOP = 80;
+const PADDING_BOTTOM = 80;
+const PADDING_SIDE = 60;
 
 // Reactive data - make a deep copy to allow mutations
 const mapData = ref<MindMapData | null>(null);
+const newNodeText = ref("");
+const selectedNodeId = ref<string | null>(null);
+const svgRef = ref<SVGSVGElement | null>(null);
+const draggingNodeId = ref<string | null>(null);
+
+const targetNodeText = computed(() => {
+  if (!mapData.value) return "";
+  const targetId = selectedNodeId.value || mapData.value.centerNodeId;
+  const node = mapData.value.nodes.find((n) => n.id === targetId);
+  return node?.text || "";
+});
 
 watch(
   () => props.selectedResult,
   (result) => {
+    // Don't overwrite local data while dragging
+    if (draggingNodeId.value) return;
+
     if (result?.toolName === TOOL_NAME && result.data) {
       // Deep copy the data so we can mutate it
       mapData.value = JSON.parse(JSON.stringify(result.data));
@@ -163,10 +203,133 @@ function textY(text: string, lineIndex: number): number {
   return startY + lineIndex * 14;
 }
 
-function expandNode(node: MindMapNode) {
-  if (props.sendTextMessage) {
-    props.sendTextMessage(`「${node.text}」を展開して、関連するアイデアを追加して`);
+// Convert screen coordinates to SVG coordinates
+function screenToSvg(event: MouseEvent): { x: number; y: number } {
+  const svg = svgRef.value;
+  if (!svg) return { x: 0, y: 0 };
+
+  const rect = svg.getBoundingClientRect();
+  const scaleX = WIDTH / rect.width;
+  const scaleY = HEIGHT / rect.height;
+
+  return {
+    x: (event.clientX - rect.left) * scaleX,
+    y: (event.clientY - rect.top) * scaleY,
+  };
+}
+
+function onMouseDown(__event: MouseEvent, node: MindMapNode) {
+  draggingNodeId.value = node.id;
+  selectedNodeId.value = node.id;
+}
+
+function onMouseMove(event: MouseEvent) {
+  if (!draggingNodeId.value || !mapData.value) return;
+
+  const pos = screenToSvg(event);
+  const node = mapData.value.nodes.find((n) => n.id === draggingNodeId.value);
+  if (node) {
+    const clamped = clampPosition(pos.x, pos.y);
+    node.x = clamped.x;
+    node.y = clamped.y;
+    // Trigger reactivity
+    mapData.value = { ...mapData.value };
   }
+}
+
+function onMouseUp() {
+  if (draggingNodeId.value && props.onUpdateResult && props.selectedResult && mapData.value) {
+    props.onUpdateResult({
+      ...props.selectedResult,
+      data: mapData.value,
+    });
+  }
+  draggingNodeId.value = null;
+}
+
+function addNode() {
+  const text = newNodeText.value.trim();
+  if (!text || !mapData.value) return;
+
+  const data = mapData.value;
+  const parentId = selectedNodeId.value || data.centerNodeId;
+  if (!parentId) return;
+
+  const parent = data.nodes.find((n) => n.id === parentId);
+  if (!parent) return;
+
+  // Calculate position for new node
+  const currentSiblings = parent.children?.length || 0;
+  const pos = calculateChildPosition(parent, currentSiblings);
+
+  // Generate unique ID
+  const newId = `node_${Date.now()}`;
+
+  // Create new node with calculated position
+  const newNode: MindMapNode = {
+    id: newId,
+    text,
+    x: pos.x,
+    y: pos.y,
+    children: [],
+  };
+
+  // Add node to nodes array
+  data.nodes.push(newNode);
+
+  // Add connection
+  data.connections.push({ from: parentId, to: newId });
+
+  // Add to parent's children
+  if (!parent.children) parent.children = [];
+  parent.children.push(newId);
+
+  // Clear input and trigger update
+  newNodeText.value = "";
+  mapData.value = { ...data };
+
+  // Notify parent
+  if (props.onUpdateResult && props.selectedResult) {
+    props.onUpdateResult({
+      ...props.selectedResult,
+      data: mapData.value,
+    });
+  }
+}
+
+function calculateChildPosition(
+  parent: MindMapNode,
+  siblingIndex: number
+): { x: number; y: number } {
+  // Direction from center to parent
+  const dx = parent.x - CX;
+  const dy = parent.y - CY;
+  const parentAngle = Math.atan2(dy, dx);
+
+  // If parent is center, spread evenly around
+  const isCenter = Math.abs(dx) < 10 && Math.abs(dy) < 10;
+  const totalSiblings = siblingIndex + 1;
+
+  if (isCenter) {
+    const angle = (2 * Math.PI * siblingIndex) / Math.max(totalSiblings, 4) - Math.PI / 2;
+    const radius = 140;
+    return clampPosition(
+      CX + radius * Math.cos(angle),
+      CY + radius * Math.sin(angle)
+    );
+  }
+
+  // Spread children in an arc
+  const spreadAngle = Math.PI * 0.6;
+  const startAngle = parentAngle - spreadAngle / 2;
+  const step = totalSiblings > 1 ? spreadAngle / totalSiblings : 0;
+  const angle = startAngle + step * siblingIndex + step / 2;
+  const radius = 90;
+
+  return clampPosition(
+    parent.x + radius * Math.cos(angle),
+    parent.y + radius * Math.sin(angle)
+  );
 }
 
 // Rebalance the layout
@@ -211,8 +374,12 @@ function rebalance() {
         const angle = (2 * Math.PI * i) / kids.length - Math.PI / 2;
         const kid = nodeMap.get(kidId);
         if (kid) {
-          kid.x = clamp(parent.x + radius * Math.cos(angle), 60, WIDTH - 60);
-          kid.y = clamp(parent.y + radius * Math.sin(angle), 60, HEIGHT - 60);
+          const pos = clampPosition(
+            parent.x + radius * Math.cos(angle),
+            parent.y + radius * Math.sin(angle)
+          );
+          kid.x = pos.x;
+          kid.y = pos.y;
         }
       });
     } else {
@@ -228,8 +395,12 @@ function rebalance() {
         const angle = start + step * i;
         const kid = nodeMap.get(kidId);
         if (kid) {
-          kid.x = clamp(parent.x + radius * Math.cos(angle), 60, WIDTH - 60);
-          kid.y = clamp(parent.y + radius * Math.sin(angle), 60, HEIGHT - 60);
+          const pos = clampPosition(
+            parent.x + radius * Math.cos(angle),
+            parent.y + radius * Math.sin(angle)
+          );
+          kid.x = pos.x;
+          kid.y = pos.y;
         }
       });
     }
@@ -256,5 +427,12 @@ function rebalance() {
 
 function clamp(val: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, val));
+}
+
+function clampPosition(x: number, y: number): { x: number; y: number } {
+  return {
+    x: clamp(x, PADDING_SIDE, WIDTH - PADDING_SIDE),
+    y: clamp(y, PADDING_TOP, HEIGHT - PADDING_BOTTOM),
+  };
 }
 </script>
