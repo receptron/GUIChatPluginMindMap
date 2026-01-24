@@ -6,12 +6,26 @@
         <h2 class="text-lg font-bold text-gray-800 bg-white px-3 py-1.5 rounded-lg shadow-md border border-gray-200 pointer-events-auto">
           {{ mapData.title }}
         </h2>
-        <button
-          @click="rebalance"
-          class="bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white px-4 py-1.5 rounded-lg shadow-md text-sm font-semibold transition-all border border-indigo-700 pointer-events-auto"
-        >
-          整理
-        </button>
+        <div class="flex gap-2 pointer-events-auto">
+          <button
+            @click="downloadPng"
+            class="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white px-3 py-1.5 rounded-lg shadow-md text-sm font-semibold transition-all border border-emerald-700"
+          >
+            PNG
+          </button>
+          <button
+            @click="downloadPdf"
+            class="bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white px-3 py-1.5 rounded-lg shadow-md text-sm font-semibold transition-all border border-rose-700"
+          >
+            PDF
+          </button>
+          <button
+            @click="rebalance"
+            class="bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white px-4 py-1.5 rounded-lg shadow-md text-sm font-semibold transition-all border border-indigo-700"
+          >
+            整理
+          </button>
+        </div>
       </div>
 
       <!-- Add Node Input -->
@@ -107,6 +121,7 @@
 
 <script setup lang="ts">
 import { ref, watch, computed } from "vue";
+import { jsPDF } from "jspdf";
 import type { ToolResult } from "gui-chat-protocol";
 import type { MindMapData, MindMapNode } from "../core/types";
 import { TOOL_NAME } from "../core/definition";
@@ -434,5 +449,95 @@ function clampPosition(x: number, y: number): { x: number; y: number } {
     x: clamp(x, PADDING_SIDE, WIDTH - PADDING_SIDE),
     y: clamp(y, PADDING_TOP, HEIGHT - PADDING_BOTTOM),
   };
+}
+
+// Convert SVG to canvas for export
+async function svgToCanvas(): Promise<HTMLCanvasElement> {
+  const svg = svgRef.value;
+  if (!svg) throw new Error("SVG not found");
+
+  const canvas = document.createElement("canvas");
+  const scale = 2; // Higher resolution
+  canvas.width = WIDTH * scale;
+  canvas.height = HEIGHT * scale;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas context not available");
+
+  // Fill background
+  ctx.fillStyle = "#f1f5f9"; // bg-slate-100
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.scale(scale, scale);
+
+  // Convert SVG to data URL
+  const svgData = new XMLSerializer().serializeToString(svg);
+  const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
+  const url = URL.createObjectURL(svgBlob);
+
+  // Draw SVG to canvas
+  const img = new Image();
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = reject;
+    img.src = url;
+  });
+
+  ctx.drawImage(img, 0, 0, WIDTH, HEIGHT);
+  URL.revokeObjectURL(url);
+
+  return canvas;
+}
+
+async function downloadPng() {
+  try {
+    const canvas = await svgToCanvas();
+    const dataUrl = canvas.toDataURL("image/png");
+
+    const link = document.createElement("a");
+    link.download = `${mapData.value?.title || "mindmap"}.png`;
+    link.href = dataUrl;
+    link.click();
+  } catch (error) {
+    console.error("PNG download failed:", error);
+  }
+}
+
+async function downloadPdf() {
+  try {
+    const canvas = await svgToCanvas();
+    const imgData = canvas.toDataURL("image/png");
+
+    // A4 landscape
+    const pdf = new jsPDF({
+      orientation: "landscape",
+      unit: "mm",
+      format: "a4",
+    });
+
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+
+    // Calculate dimensions to fit the page with margin
+    const margin = 10;
+    const availableWidth = pageWidth - margin * 2;
+    const availableHeight = pageHeight - margin * 2;
+
+    const aspectRatio = WIDTH / HEIGHT;
+    let imgWidth = availableWidth;
+    let imgHeight = imgWidth / aspectRatio;
+
+    if (imgHeight > availableHeight) {
+      imgHeight = availableHeight;
+      imgWidth = imgHeight * aspectRatio;
+    }
+
+    const x = (pageWidth - imgWidth) / 2;
+    const y = (pageHeight - imgHeight) / 2;
+
+    pdf.addImage(imgData, "PNG", x, y, imgWidth, imgHeight);
+    pdf.save(`${mapData.value?.title || "mindmap"}.pdf`);
+  } catch (error) {
+    console.error("PDF download failed:", error);
+  }
 }
 </script>

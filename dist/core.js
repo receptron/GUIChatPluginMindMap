@@ -1,4 +1,4 @@
-const y = "createMindMap", j = {
+const y = "createMindMap", O = {
   type: "function",
   name: y,
   description: "Create or update an interactive mind map to visualize ideas, concepts, and their relationships. Use this when brainstorming, organizing thoughts, or explaining complex topics visually.",
@@ -7,8 +7,8 @@ const y = "createMindMap", j = {
     properties: {
       action: {
         type: "string",
-        enum: ["create", "add_node", "connect", "update", "rebalance"],
-        description: "Action to perform: create (new mind map), add_node (add idea to existing node), connect (link two nodes), update (modify existing map), rebalance (recalculate layout for better display)"
+        enum: ["create", "add_node", "delete_node", "connect", "update", "rebalance"],
+        description: "Action to perform: create (new mind map), add_node (add idea to existing node), delete_node (remove a node and its connections), connect (link two nodes), update (modify existing map), rebalance (recalculate layout for better display)"
       },
       title: {
         type: "string",
@@ -30,6 +30,10 @@ const y = "createMindMap", j = {
       newIdea: {
         type: "string",
         description: "New idea to add (for add_node action)"
+      },
+      nodeIdToDelete: {
+        type: "string",
+        description: "ID of the node to delete (for delete_node action). Children of this node will also be deleted."
       },
       fromNodeId: {
         type: "string",
@@ -57,7 +61,7 @@ const y = "createMindMap", j = {
 - Planning projects or workflows
 - Summarizing discussions into visual format
 
-When creating a mind map, start with a clear central idea and branch out with related concepts. Use add_node to expand specific branches and connect to show relationships between non-adjacent ideas.`, C = [
+When creating a mind map, start with a clear central idea and branch out with related concepts. Use add_node to expand specific branches, delete_node to remove unwanted nodes, and connect to show relationships between non-adjacent ideas.`, A = [
   "#4F46E5",
   // indigo
   "#0891B2",
@@ -75,165 +79,192 @@ When creating a mind map, start with a clear central idea and branch out with re
   "#DB2777"
   // pink
 ];
-function D() {
+function x() {
   return `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
-function x(n) {
-  return C[n % C.length];
+function C(n) {
+  return A[n % A.length];
 }
-const A = 800, E = 600, T = A / 2, R = E / 2, w = 60;
-function P(n, e, t, o, i) {
+const T = 800, E = 600, R = T / 2, P = E / 2, D = 60;
+function S(n, e, t, i, o) {
   const s = 2 * Math.PI * n / e - Math.PI / 2;
   return {
-    x: t + i * Math.cos(s),
-    y: o + i * Math.sin(s)
+    x: t + o * Math.cos(s),
+    y: i + o * Math.sin(s)
   };
 }
-function S(n, e, t, o, i) {
-  const s = n - T, r = e - R, f = Math.atan2(r, s), d = Math.PI * 0.67, m = f - d / 2, u = o > 1 ? d / (o - 1) : 0, a = m + u * t, c = 120 * Math.pow(0.85, i - 1);
+function _(n, e, t, i, o) {
+  const s = n - R, r = e - P, f = Math.atan2(r, s), a = Math.PI * 0.67, l = f - a / 2, c = i > 1 ? a / (i - 1) : 0, d = l + c * t, u = 120 * Math.pow(0.85, o - 1);
   return {
-    x: n + c * Math.cos(a),
-    y: e + c * Math.sin(a)
+    x: n + u * Math.cos(d),
+    y: e + u * Math.sin(d)
   };
 }
-function _(n, e) {
+function k(n, e) {
   return {
-    x: Math.max(w, Math.min(A - w, n)),
-    y: Math.max(w, Math.min(E - w, e))
+    x: Math.max(D, Math.min(T - D, n)),
+    y: Math.max(D, Math.min(E - D, e))
   };
 }
-function k(n, e, t, o = /* @__PURE__ */ new Set()) {
-  var i;
+function v(n, e, t, i = /* @__PURE__ */ new Set()) {
+  var o;
   if (n === t) return 0;
-  if (o.has(n)) return 999;
-  o.add(n);
+  if (i.has(n)) return 999;
+  i.add(n);
   for (const s of e)
-    if ((i = s.children) != null && i.includes(n))
-      return 1 + k(s.id, e, t, o);
+    if ((o = s.children) != null && o.includes(n))
+      return 1 + v(s.id, e, t, i);
   return 1;
 }
-function v(n, e, t) {
+function j(n, e, t) {
   const r = {
-    id: D(),
+    id: x(),
     text: e,
     x: 400,
     y: 300,
     color: "#1F2937",
     // dark gray for center
     children: []
-  }, f = [r], d = [];
-  return t.forEach((m, u) => {
-    var c;
-    const a = P(u, t.length, 400, 300, 200), p = {
-      id: D(),
-      text: m,
-      x: a.x,
-      y: a.y,
-      color: x(u),
+  }, f = [r], a = [];
+  return t.forEach((l, c) => {
+    var u;
+    const d = S(c, t.length, 400, 300, 200), m = {
+      id: x(),
+      text: l,
+      x: d.x,
+      y: d.y,
+      color: C(c),
       children: []
     };
-    f.push(p), (c = r.children) == null || c.push(p.id), d.push({
+    f.push(m), (u = r.children) == null || u.push(m.id), a.push({
       from: r.id,
-      to: p.id
+      to: m.id
     });
   }), {
     title: n,
     nodes: f,
-    connections: d,
+    connections: a,
     centerNodeId: r.id
   };
 }
-function L(n, e, t) {
-  var l;
-  const o = n.nodes || [], i = n.connections || [], s = o.find((g) => g.id === e);
+function q(n, e, t) {
+  var p;
+  const i = n.nodes || [], o = n.connections || [], s = i.find((g) => g.id === e);
   if (!s)
-    return { ...n, nodes: o, connections: i };
-  const r = ((l = s.children) == null ? void 0 : l.length) || 0, f = r, d = r + 1, m = k(e, o, n.centerNodeId || "") + 1, u = S(
+    return { ...n, nodes: i, connections: o };
+  const r = ((p = s.children) == null ? void 0 : p.length) || 0, f = r, a = r + 1, l = v(e, i, n.centerNodeId || "") + 1, c = _(
     s.x,
     s.y,
     f,
-    d,
-    m
-  ), a = _(u.x, u.y), p = {
-    id: D(),
+    a,
+    l
+  ), d = k(c.x, c.y), m = {
+    id: x(),
     text: t,
-    x: a.x,
-    y: a.y,
-    color: x(o.length),
+    x: d.x,
+    y: d.y,
+    color: C(i.length),
     children: []
-  }, c = {
+  }, u = {
     ...s,
-    children: [...s.children || [], p.id]
+    children: [...s.children || [], m.id]
   };
   return {
     ...n,
-    nodes: [...o.filter((g) => g.id !== e), c, p],
+    nodes: [...i.filter((g) => g.id !== e), u, m],
     connections: [
-      ...i,
-      { from: e, to: p.id }
+      ...o,
+      { from: e, to: m.id }
     ]
   };
 }
-function q(n) {
+function L(n) {
   const e = n.nodes || [], t = n.centerNodeId;
-  if (!t || e.length === 0 || !e.find((d) => d.id === t))
+  if (!t || e.length === 0 || !e.find((a) => a.id === t))
     return n;
-  const i = new Map(e.map((d) => [d.id, { ...d }])), s = i.get(t);
-  s.x = T, s.y = R;
-  const r = (d, m, u) => {
-    const a = i.get(d);
-    if (!a || !a.children || u.has(d)) return;
-    u.add(d);
-    const p = a.children.filter((c) => !u.has(c));
-    p.forEach((c, l) => {
-      const g = i.get(c);
+  const o = new Map(e.map((a) => [a.id, { ...a }])), s = o.get(t);
+  s.x = R, s.y = P;
+  const r = (a, l, c) => {
+    const d = o.get(a);
+    if (!d || !d.children || c.has(a)) return;
+    c.add(a);
+    const m = d.children.filter((u) => !c.has(u));
+    m.forEach((u, p) => {
+      const g = o.get(u);
       if (g) {
-        if (m === 1) {
-          const M = P(
-            l,
-            p.length,
-            a.x,
-            a.y,
+        if (l === 1) {
+          const M = S(
+            p,
+            m.length,
+            d.x,
+            d.y,
             160
           );
           g.x = M.x, g.y = M.y;
         } else {
-          const b = S(
-            a.x,
-            a.y,
-            l,
-            p.length,
-            m
-          ), M = _(b.x, b.y);
+          const N = _(
+            d.x,
+            d.y,
+            p,
+            m.length,
+            l
+          ), M = k(N.x, N.y);
           g.x = M.x, g.y = M.y;
         }
-        r(c, m + 1, u);
+        r(u, l + 1, c);
       }
     });
   }, f = /* @__PURE__ */ new Set();
   return f.add(t), r(t, 1, f), {
     ...n,
-    nodes: Array.from(i.values())
+    nodes: Array.from(o.values())
   };
 }
-function H(n, e, t, o) {
-  const i = n.connections || [];
-  return i.some(
+function F(n, e, t, i) {
+  const o = n.connections || [];
+  return o.some(
     (r) => r.from === e && r.to === t
-  ) ? { ...n, connections: i } : {
+  ) ? { ...n, connections: o } : {
     ...n,
     connections: [
-      ...i,
-      { from: e, to: t, label: o }
+      ...o,
+      { from: e, to: t, label: i }
     ]
   };
 }
+function H(n, e) {
+  const t = n.nodes || [], i = n.connections || [];
+  if (e === n.centerNodeId)
+    return n;
+  const o = /* @__PURE__ */ new Set();
+  function s(a) {
+    o.add(a);
+    const l = t.find((c) => c.id === a);
+    l != null && l.children && l.children.forEach((c) => s(c));
+  }
+  s(e);
+  const r = t.filter((a) => !o.has(a.id)).map((a) => {
+    var l;
+    return {
+      ...a,
+      // Remove deleted children from children arrays
+      children: (l = a.children) == null ? void 0 : l.filter((c) => !o.has(c))
+    };
+  }), f = i.filter(
+    (a) => !o.has(a.from) && !o.has(a.to)
+  );
+  return {
+    ...n,
+    nodes: r,
+    connections: f
+  };
+}
 function I(n, e) {
-  var o, i, s, r;
-  const t = (o = n.currentResult) == null ? void 0 : o.data;
+  var i, o, s, r;
+  const t = (i = n.currentResult) == null ? void 0 : i.data;
   if (console.log("[MindMap Debug] getExistingMapData:", {
     contextDataExists: !!t,
-    contextDataNodes: (i = t == null ? void 0 : t.nodes) == null ? void 0 : i.length,
+    contextDataNodes: (o = t == null ? void 0 : t.nodes) == null ? void 0 : o.length,
     argsMapExists: !!e,
     argsMapNodes: (s = e == null ? void 0 : e.nodes) == null ? void 0 : s.length,
     argsMapHasNodeCount: e && "nodeCount" in e
@@ -249,38 +280,38 @@ function I(n, e) {
     };
   if (e && "nodeCount" in e && e.nodes) {
     console.log("[MindMap Debug] Reconstructing from jsonData format");
-    const f = e, d = 400, m = 300, u = 200, a = f.nodes.map((c, l) => {
-      const g = 2 * Math.PI * l / f.nodes.length - Math.PI / 2;
+    const f = e, a = 400, l = 300, c = 200, d = f.nodes.map((u, p) => {
+      const g = 2 * Math.PI * p / f.nodes.length - Math.PI / 2;
       return {
-        id: c.id,
-        text: c.text,
-        x: l === 0 ? d : d + u * Math.cos(g),
-        y: l === 0 ? m : m + u * Math.sin(g),
-        color: l === 0 ? "#1F2937" : x(l),
+        id: u.id,
+        text: u.text,
+        x: p === 0 ? a : a + c * Math.cos(g),
+        y: p === 0 ? l : l + c * Math.sin(g),
+        color: p === 0 ? "#1F2937" : C(p),
         children: []
       };
-    }), p = [];
-    if (a.length > 1) {
-      const c = a[0];
-      for (let l = 1; l < a.length; l++)
-        p.push({
-          from: c.id,
-          to: a[l].id
-        }), c.children = c.children || [], c.children.push(a[l].id);
+    }), m = [];
+    if (d.length > 1) {
+      const u = d[0];
+      for (let p = 1; p < d.length; p++)
+        m.push({
+          from: u.id,
+          to: d[p].id
+        }), u.children = u.children || [], u.children.push(d[p].id);
     }
-    return console.log("[MindMap Debug] Reconstructed", a.length, "nodes from jsonData"), {
+    return console.log("[MindMap Debug] Reconstructed", d.length, "nodes from jsonData"), {
       title: "Mind Map",
-      nodes: a,
-      connections: p,
-      centerNodeId: ((r = a[0]) == null ? void 0 : r.id) || ""
+      nodes: d,
+      connections: m,
+      centerNodeId: ((r = d[0]) == null ? void 0 : r.id) || ""
     };
   }
   return console.log("[MindMap Debug] No existing map found, returning null"), null;
 }
 const U = async (n, e) => {
-  var m, u, a, p, c, l, g, b, M;
+  var l, c, d, m, u, p, g, N, M;
   const { action: t } = e;
-  let o, i, s;
+  let i, o, s;
   switch (t) {
     case "create": {
       if (!e.title || !e.centralIdea)
@@ -289,39 +320,57 @@ const U = async (n, e) => {
           message: "Title and central idea are required for creating a mind map",
           instructions: "Ask the user for the title and central concept."
         };
-      o = v(
+      i = j(
         e.title,
         e.centralIdea,
         e.ideas || []
-      ), i = `Created mind map "${e.title}" with ${o.nodes.length} nodes`, s = "Tell the user the mind map has been created. Ask if they want to add more ideas or create connections between concepts.";
+      ), o = `Created mind map "${e.title}" with ${i.nodes.length} nodes`, s = "Tell the user the mind map has been created. Ask if they want to add more ideas or create connections between concepts.";
       break;
     }
     case "add_node": {
-      const h = I(n, e.existingMap), O = {
+      const h = I(n, e.existingMap), w = {
         hasContext: !!n,
         hasCurrentResult: !!(n != null && n.currentResult),
-        currentResultToolName: (m = n == null ? void 0 : n.currentResult) == null ? void 0 : m.toolName,
-        currentResultHasData: !!((u = n == null ? void 0 : n.currentResult) != null && u.data),
-        currentResultDataNodes: (c = (p = (a = n == null ? void 0 : n.currentResult) == null ? void 0 : a.data) == null ? void 0 : p.nodes) == null ? void 0 : c.length,
+        currentResultToolName: (l = n == null ? void 0 : n.currentResult) == null ? void 0 : l.toolName,
+        currentResultHasData: !!((c = n == null ? void 0 : n.currentResult) != null && c.data),
+        currentResultDataNodes: (u = (m = (d = n == null ? void 0 : n.currentResult) == null ? void 0 : d.data) == null ? void 0 : m.nodes) == null ? void 0 : u.length,
         argsHasExistingMap: !!e.existingMap,
-        argsExistingMapNodes: (g = (l = e.existingMap) == null ? void 0 : l.nodes) == null ? void 0 : g.length,
-        existingMapResult: h ? `${(b = h.nodes) == null ? void 0 : b.length} nodes` : null,
+        argsExistingMapNodes: (g = (p = e.existingMap) == null ? void 0 : p.nodes) == null ? void 0 : g.length,
+        existingMapResult: h ? `${(N = h.nodes) == null ? void 0 : N.length} nodes` : null,
         parentNodeId: e.parentNodeId,
         newIdea: e.newIdea
       };
-      if (console.log("[MindMap Debug] add_node:", JSON.stringify(O, null, 2)), !h || !e.parentNodeId || !e.newIdea) {
-        const N = [];
-        return h || N.push("existingMap"), e.parentNodeId || N.push("parentNodeId"), e.newIdea || N.push("newIdea"), {
+      if (console.log("[MindMap Debug] add_node:", JSON.stringify(w, null, 2)), !h || !e.parentNodeId || !e.newIdea) {
+        const b = [];
+        return h || b.push("existingMap"), e.parentNodeId || b.push("parentNodeId"), e.newIdea || b.push("newIdea"), {
           toolName: y,
-          message: `Missing: ${N.join(", ")}. Debug: context.currentResult.data=${!!((M = n == null ? void 0 : n.currentResult) != null && M.data)}, args.existingMap=${!!e.existingMap}`,
+          message: `Missing: ${b.join(", ")}. Debug: context.currentResult.data=${!!((M = n == null ? void 0 : n.currentResult) != null && M.data)}, args.existingMap=${!!e.existingMap}`,
           instructions: "Ask the user which node to add the new idea to."
         };
       }
-      o = L(
+      i = q(
         h,
         e.parentNodeId,
         e.newIdea
-      ), i = `Added "${e.newIdea}" to the mind map`, s = "Confirm the new idea was added. Ask if they want to continue expanding or explore other branches.";
+      ), o = `Added "${e.newIdea}" to the mind map`, s = "Confirm the new idea was added. Ask if they want to continue expanding or explore other branches.";
+      break;
+    }
+    case "delete_node": {
+      const h = I(n, e.existingMap);
+      if (!h || !e.nodeIdToDelete)
+        return {
+          toolName: y,
+          message: "Existing map and node ID are required for deletion",
+          instructions: "Ask which node should be deleted."
+        };
+      if (e.nodeIdToDelete === h.centerNodeId)
+        return {
+          toolName: y,
+          message: "Cannot delete the center node",
+          instructions: "Tell the user that the center node cannot be deleted."
+        };
+      const w = h.nodes.find((b) => b.id === e.nodeIdToDelete);
+      i = H(h, e.nodeIdToDelete), o = `Deleted "${(w == null ? void 0 : w.text) || e.nodeIdToDelete}" from the mind map`, s = "Confirm the node was deleted. Ask if they want to make any other changes.";
       break;
     }
     case "connect": {
@@ -332,12 +381,12 @@ const U = async (n, e) => {
           message: "Existing map and both node IDs are required for connection",
           instructions: "Ask which concepts should be connected."
         };
-      o = H(
+      i = F(
         h,
         e.fromNodeId,
         e.toNodeId,
         e.connectionLabel
-      ), i = "Connected nodes in the mind map", s = "Confirm the connection was created. Ask if they want to add more relationships.";
+      ), o = "Connected nodes in the mind map", s = "Confirm the connection was created. Ask if they want to add more relationships.";
       break;
     }
     case "update": {
@@ -348,7 +397,7 @@ const U = async (n, e) => {
           message: "Existing map is required for update",
           instructions: "The mind map data is missing."
         };
-      o = h, i = "Mind map updated", s = "The mind map has been refreshed.";
+      i = h, o = "Mind map updated", s = "The mind map has been refreshed.";
       break;
     }
     case "rebalance": {
@@ -359,7 +408,7 @@ const U = async (n, e) => {
           message: "Existing map is required for rebalance",
           instructions: "The mind map data is missing."
         };
-      o = q(h), i = `Mind map layout rebalanced with ${o.nodes.length} nodes`, s = "The mind map layout has been optimized for better readability.";
+      i = L(h), o = `Mind map layout rebalanced with ${i.nodes.length} nodes`, s = "The mind map layout has been optimized for better readability.";
       break;
     }
     default:
@@ -369,22 +418,22 @@ const U = async (n, e) => {
         instructions: "Invalid action specified."
       };
   }
-  const r = o.nodes || [], f = o.connections || [], d = {
+  const r = i.nodes || [], f = i.connections || [], a = {
     nodeCount: r.length,
     connectionCount: f.length,
     nodes: r.map((h) => ({ id: h.id, text: h.text }))
   };
   return {
     toolName: y,
-    message: i,
-    title: o.title,
-    data: o,
-    jsonData: d,
+    message: o,
+    title: i.title,
+    data: i,
+    jsonData: a,
     instructions: s,
     updating: t !== "create"
   };
 }, W = {
-  toolDefinition: j,
+  toolDefinition: O,
   execute: U,
   generatingMessage: "Creating mind map...",
   isEnabled: () => !0,
@@ -455,7 +504,7 @@ const U = async (n, e) => {
 ];
 export {
   $ as SYSTEM_PROMPT,
-  j as TOOL_DEFINITION,
+  O as TOOL_DEFINITION,
   y as TOOL_NAME,
   U as executeMindMap,
   W as pluginCore,
