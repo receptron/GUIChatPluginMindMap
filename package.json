@@ -71,7 +71,7 @@
     "eslint-plugin-vue": "^10.9.2",
     "globals": "^17.7.0",
     "gui-chat-protocol": "^0.4.0",
-    "openai": "^6.45.0",
+    "openai": "^4.77.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "tailwindcss": "^4.3.1",
