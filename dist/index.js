@@ -1,9 +1,3 @@
-import { SYSTEM_PROMPT as M, TOOL_DEFINITION as T, TOOL_NAME as p, executeMindMap as o, pluginCore as r, samples as E } from "./core.js";
-export {
-  M as SYSTEM_PROMPT,
-  T as TOOL_DEFINITION,
-  p as TOOL_NAME,
-  o as executeMindMap,
-  r as pluginCore,
-  E as samples
-};
+import { a as e, i as t, n, o as r, r as i, t as a } from "./samples-Cx5kG2aH.js";
+import "./core.js";
+export { t as SYSTEM_PROMPT, e as TOOL_DEFINITION, r as TOOL_NAME, n as executeMindMap, i as pluginCore, a as samples };

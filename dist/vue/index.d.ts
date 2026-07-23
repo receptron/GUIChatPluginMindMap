@@ -12,6 +12,6 @@ export { TOOL_NAME, TOOL_DEFINITION, SYSTEM_PROMPT, executeMindMap, pluginCore, 
 export { samples } from "../core/samples";
 export { View, Preview };
 declare const _default: {
-    plugin: ToolPlugin<MindMapData, MindMapJsonData, MindMapArgs, import("gui-chat-protocol/vue").InputHandler, Record<string, unknown>>;
+    plugin: ToolPlugin<MindMapData, MindMapJsonData, MindMapArgs, import("gui-chat-protocol").InputHandler, Record<string, unknown>>;
 };
 export default _default;
