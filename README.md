@@ -15,8 +15,11 @@ Interactive mind map plugin for GUI Chat applications. Create visual mind maps f
 ## Installation
 
 ```bash
-yarn add @gui-chat-plugin/mindmap
+yarn add @gui-chat-plugin/mindmap gui-chat-protocol
 ```
+
+> `gui-chat-protocol` is a peer dependency — install it alongside the plugin; the host application provides the runtime and this plugin only declares the compatible range.
+
 
 ## Usage
 
