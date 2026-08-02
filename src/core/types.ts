@@ -49,5 +49,7 @@ export interface MindMapArgs {
 export interface MindMapJsonData {
   nodeCount: number;
   connectionCount: number;
+  /** Lets a caller that echoes this back as `existingMap` keep the center */
+  centerNodeId: string;
   nodes: { id: string; text: string }[];
 }

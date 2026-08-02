@@ -6,7 +6,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert";
 import { executeMindMap, TOOL_NAME } from "../src/core/plugin.js";
-import type { MindMapData, MindMapArgs, MindMapJsonData } from "../src/core/types.js";
+import type { MindMapData, MindMapArgs, MindMapJsonData, IdeaInput } from "../src/core/types.js";
 import type { ToolContext, ToolResult } from "gui-chat-protocol";
 
 // Helper to create a mock context
@@ -49,6 +49,7 @@ describe("Mind Map Plugin - create action", () => {
     const centerNode = result.data.nodes.find((n) => n.id === result.data!.centerNodeId);
     assert.ok(centerNode, "center node should exist");
     assert.strictEqual(centerNode.text, "Artificial Intelligence");
+    assert.strictEqual(result.jsonData?.centerNodeId, result.data.centerNodeId);
 
     console.log("✓ Created mind map with 4 nodes and 3 connections");
   });
@@ -154,8 +155,8 @@ describe("Mind Map Plugin - add_node action", () => {
     const result = await executeMindMap(createContext(), addArgs);
 
     assert.ok(result.data, "Should reconstruct and return data");
-    assert.ok(result.data.nodes.length > 3, "Should have added a node");
-    assert.ok(result.data.connections, "Should have connections array");
+    assert.strictEqual(result.data.nodes.length, 4, "Should have added a node");
+    assert.strictEqual(result.data.connections.length, 3, "Center branches plus the new node");
 
     const newNode = result.data.nodes.find((n) => n.text === "New Branch");
     assert.ok(newNode, "New node should exist");
@@ -350,7 +351,499 @@ describe("Mind Map Plugin - node references by label", () => {
   });
 });
 
+describe("Mind Map Plugin - stateless round-trip", () => {
+  // A host with no client-side state hands `jsonData` back as `existingMap`.
+  // The center must survive that trip, or every later edit rewires the map.
+  test("should keep the center after add_node when only jsonData is echoed back", async () => {
+    const created = await createTestMindMap();
+    assert.ok(created.data && created.jsonData);
+    const centerId = created.data.centerNodeId;
+
+    const added = await executeMindMap(createContext(created), {
+      action: "add_node",
+      parentNodeId: centerId,
+      newIdea: "Added",
+    });
+    assert.ok(added.jsonData);
+    assert.strictEqual(added.jsonData.centerNodeId, centerId);
+    assert.strictEqual(added.data?.nodes[0].id, centerId, "Center should stay first");
+
+    // Second edit sees only what the LLM could echo: ids + labels
+    const roundTripped = await executeMindMap(null, {
+      action: "add_node",
+      existingMap: JSON.parse(JSON.stringify(added.jsonData)),
+      parentNodeId: "Added",
+      newIdea: "Grandchild",
+    });
+
+    assert.ok(roundTripped.data);
+    assert.strictEqual(roundTripped.data.centerNodeId, centerId, "Center must not drift");
+    const parent = roundTripped.data.nodes.find((n) => n.text === "Added")!;
+    const child = roundTripped.data.nodes.find((n) => n.text === "Grandchild")!;
+    assert.ok(parent.children?.includes(child.id));
+    console.log("✓ jsonData round-trip keeps the center");
+  });
+
+  test("should accept a map whose nodes carry no positions", async () => {
+    const result = await executeMindMap(null, {
+      action: "add_node",
+      existingMap: JSON.parse(
+        JSON.stringify({
+          title: "Positionless",
+          centerNodeId: "n1",
+          nodes: [
+            { id: "n2", text: "Branch" },
+            { id: "n1", text: "Center" },
+          ],
+        })
+      ),
+      parentNodeId: "Branch",
+      newIdea: "Leaf",
+    });
+
+    assert.ok(result.data, "A positionless map should still be editable");
+    assert.strictEqual(result.data.centerNodeId, "n1", "centerNodeId should win over node order");
+    for (const node of result.data.nodes) {
+      assert.ok(Number.isFinite(node.x) && Number.isFinite(node.y), "Positions should be filled in");
+    }
+    console.log("✓ Positionless host data is rebuilt instead of rejected");
+  });
+
+  test("should keep the hierarchy of a positionless map instead of flattening it", async () => {
+    const positionless = {
+      title: "Structured",
+      centerNodeId: "root",
+      nodes: [
+        { id: "root", text: "Root", children: ["branch"] },
+        { id: "branch", text: "Branch", children: ["leaf"] },
+        { id: "leaf", text: "Leaf", children: [] },
+      ],
+      connections: [
+        { from: "root", to: "branch" },
+        { from: "branch", to: "leaf" },
+      ],
+    };
+
+    const result = await executeMindMap(createContext(), {
+      action: "add_node",
+      existingMap: JSON.parse(JSON.stringify(positionless)),
+      parentNodeId: "leaf",
+      newIdea: "Deeper",
+    });
+
+    assert.ok(result.data);
+    const byId = (id: string) => result.data!.nodes.find((n) => n.id === id)!;
+    assert.deepStrictEqual(byId("root").children, ["branch"], "Root must not adopt every node");
+    assert.deepStrictEqual(byId("branch").children, ["leaf"]);
+    const added = result.data.nodes.find((n) => n.text === "Deeper")!;
+    assert.ok(byId("leaf").children?.includes(added.id));
+    console.log("✓ Positionless hierarchy is preserved");
+  });
+
+  test("should recover the hierarchy from connections alone", async () => {
+    const result = await executeMindMap(createContext(), {
+      action: "add_node",
+      existingMap: JSON.parse(
+        JSON.stringify({
+          centerNodeId: "root",
+          nodes: [
+            { id: "root", text: "Root" },
+            { id: "a", text: "A" },
+            { id: "b", text: "B" },
+          ],
+          connections: [
+            { from: "root", to: "a" },
+            { from: "a", to: "b" },
+          ],
+        })
+      ),
+      parentNodeId: "B",
+      newIdea: "C",
+    });
+
+    assert.ok(result.data);
+    const byId = (id: string) => result.data!.nodes.find((n) => n.id === id)!;
+    assert.deepStrictEqual(byId("root").children, ["a"]);
+    assert.deepStrictEqual(byId("a").children, ["b"]);
+    console.log("✓ Hierarchy recovered from connections");
+  });
+
+  test("should refuse a payload whose node list is partly malformed", async () => {
+    const result = await executeMindMap(createContext(), {
+      action: "add_node",
+      existingMap: JSON.parse(
+        JSON.stringify({
+          nodeCount: 2,
+          nodes: [{ id: "n1", text: "Center" }, { label: "oops" }],
+        })
+      ),
+      parentNodeId: "Center",
+      newIdea: "Child",
+    });
+
+    assert.strictEqual(result.data, undefined, "Half-parsed payloads must not silently lose nodes");
+    assert.ok(result.message?.includes("Existing map"));
+    console.log("✓ Partly-malformed payloads are rejected");
+  });
+
+  test("should read a positionless map from the context as well as from args", async () => {
+    const contextResult: ToolResult<MindMapData, MindMapJsonData> = {
+      toolName: TOOL_NAME,
+      message: "stored by the host",
+      data: JSON.parse(
+        JSON.stringify({
+          centerNodeId: "c",
+          nodes: [
+            { id: "c", text: "Center", children: ["k"] },
+            { id: "k", text: "Kid" },
+          ],
+        })
+      ),
+    };
+
+    const result = await executeMindMap({ currentResult: contextResult }, {
+      action: "add_node",
+      parentNodeId: "Kid",
+      newIdea: "Grandkid",
+    });
+
+    assert.ok(result.data, "Context data without positions should still be usable");
+    const kid = result.data.nodes.find((n) => n.id === "k")!;
+    const added = result.data.nodes.find((n) => n.text === "Grandkid")!;
+    assert.ok(kid.children?.includes(added.id));
+    console.log("✓ Positionless context data is rebuilt too");
+  });
+
+  test("should keep the center first across every mutating action", async () => {
+    let result = await createTestMindMap();
+    const centerId = result.data!.centerNodeId;
+
+    result = await executeMindMap(createContext(result), {
+      action: "add_node",
+      parentNodeId: centerId,
+      newIdea: "Added",
+    });
+    assert.strictEqual(result.data!.nodes[0].id, centerId, "after add_node");
+
+    result = await executeMindMap(createContext(result), {
+      action: "connect",
+      fromNodeId: "Idea 1",
+      toNodeId: "Idea 2",
+    });
+    assert.strictEqual(result.data!.nodes[0].id, centerId, "after connect");
+
+    result = await executeMindMap(createContext(result), {
+      action: "delete_node",
+      nodeIdToDelete: "Idea 1",
+    });
+    assert.strictEqual(result.data!.nodes[0].id, centerId, "after delete_node");
+
+    result = await executeMindMap(createContext(result), { action: "rebalance" });
+    assert.strictEqual(result.data!.nodes[0].id, centerId, "after rebalance");
+    assert.strictEqual(result.jsonData?.centerNodeId, centerId);
+    console.log("✓ Center stays first across add / connect / delete / rebalance");
+  });
+});
+
+describe("Mind Map Plugin - rebalance action", () => {
+  test("should actually move stale node positions", async () => {
+    const created = await executeMindMap(createContext(), {
+      action: "create",
+      title: "Stale",
+      centralIdea: "Root",
+      ideas: [{ text: "Branch", children: [{ text: "Leaf" }] }],
+    });
+    assert.ok(created.data);
+
+    const flattened: MindMapData = {
+      ...created.data,
+      nodes: created.data.nodes.map((n) => ({ ...n, x: 0, y: 0 })),
+    };
+
+    const result = await executeMindMap(createContext(), {
+      action: "rebalance",
+      existingMap: flattened,
+    });
+
+    assert.ok(result.data);
+    const center = result.data.nodes.find((n) => n.id === result.data!.centerNodeId)!;
+    assert.strictEqual(center.x, 400);
+    assert.strictEqual(center.y, 300);
+
+    // Sole first-level child sits straight above the center at the level-1 radius
+    const branch = result.data.nodes.find((n) => n.text === "Branch")!;
+    assert.ok(Math.abs(branch.x - 400) < 1e-9);
+    assert.strictEqual(branch.y, 300 - 160);
+
+    const leaf = result.data.nodes.find((n) => n.text === "Leaf")!;
+    assert.ok(leaf.x !== 0 || leaf.y !== 0, "The deep node was left at the stale position");
+    console.log("✓ rebalance repositions every node");
+  });
+});
+
+describe("Mind Map Plugin - untrusted relationship graphs", () => {
+  const cyclicMap = {
+    centerNodeId: "root",
+    nodes: [
+      { id: "root", text: "Root", children: ["a"] },
+      { id: "a", text: "A", children: ["b"] },
+      { id: "b", text: "B", children: ["a", "b"] },
+    ],
+  };
+
+  test("should break cycles instead of hanging on delete", async () => {
+    const result = await executeMindMap(createContext(), {
+      action: "delete_node",
+      existingMap: JSON.parse(JSON.stringify(cyclicMap)),
+      nodeIdToDelete: "A",
+    });
+
+    assert.ok(result.data, "Deleting inside a cycle should return a map");
+    assert.deepStrictEqual(
+      result.data.nodes.map((n) => n.id),
+      ["root"],
+      "A and its descendant B should be gone, exactly once"
+    );
+    console.log("✓ Cyclic children graphs cannot hang the delete cascade");
+  });
+
+  test("should give every node exactly one parent", async () => {
+    const result = await executeMindMap(createContext(), {
+      action: "update",
+      existingMap: JSON.parse(
+        JSON.stringify({
+          centerNodeId: "root",
+          nodes: [
+            { id: "root", text: "Root", children: ["shared"] },
+            { id: "other", text: "Other", children: ["shared"] },
+            { id: "shared", text: "Shared" },
+          ],
+        })
+      ),
+    });
+
+    assert.ok(result.data);
+    const parentCount = (id: string) =>
+      result.data!.nodes.filter((n) => n.children?.includes(id)).length;
+    assert.strictEqual(parentCount("shared"), 1, "A node claimed twice should end up with one parent");
+    for (const node of result.data.nodes) {
+      const expected = node.id === result.data.centerNodeId ? 0 : 1;
+      assert.strictEqual(parentCount(node.id), expected, `${node.text} should have ${expected} parent`);
+    }
+    console.log("✓ Multi-parent payloads are canonicalized");
+  });
+
+  test("should attach center-disconnected nodes instead of stacking them", async () => {
+    const result = await executeMindMap(createContext(), {
+      action: "update",
+      existingMap: JSON.parse(
+        JSON.stringify({
+          centerNodeId: "root",
+          nodes: [
+            { id: "root", text: "Root" },
+            { id: "orphan", text: "Orphan", children: ["kid"] },
+            { id: "kid", text: "Kid" },
+          ],
+        })
+      ),
+    });
+
+    assert.ok(result.data);
+    const root = result.data.nodes.find((n) => n.id === "root")!;
+    assert.ok(root.children?.includes("orphan"), "Unreachable subtree should hang off the center");
+    const orphan = result.data.nodes.find((n) => n.id === "orphan")!;
+    assert.deepStrictEqual(orphan.children, ["kid"], "Its own subtree should survive");
+    assert.ok(orphan.x !== root.x || orphan.y !== root.y, "It should not stack on the center");
+    console.log("✓ Disconnected subtrees are reattached and laid out");
+  });
+
+  test("should survive a positioned map whose children field is not an array", async () => {
+    const result = await executeMindMap(createContext(), {
+      action: "delete_node",
+      existingMap: JSON.parse(
+        JSON.stringify({
+          centerNodeId: "root",
+          nodes: [
+            { id: "root", text: "Root", x: 400, y: 300, children: "oops" },
+            { id: "kid", text: "Kid", x: 100, y: 100, children: 7 },
+          ],
+        })
+      ),
+      nodeIdToDelete: "Kid",
+    });
+
+    assert.ok(result.data, "A malformed children field must not throw");
+    assert.deepStrictEqual(result.data.nodes.map((n) => n.id), ["root"]);
+    console.log("✓ Non-array children fields are normalized");
+  });
+
+  test("should reject duplicate ids in a positioned map too", async () => {
+    const result = await executeMindMap(createContext(), {
+      action: "add_node",
+      existingMap: JSON.parse(
+        JSON.stringify({
+          centerNodeId: "dup",
+          nodes: [
+            { id: "dup", text: "One", x: 400, y: 300 },
+            { id: "dup", text: "Two", x: 100, y: 100 },
+          ],
+        })
+      ),
+      parentNodeId: "One",
+      newIdea: "Child",
+    });
+
+    assert.strictEqual(result.data, undefined);
+    console.log("✓ Duplicate ids are rejected for positioned maps as well");
+  });
+
+  test("should not hang on a self-parenting node", async () => {
+    const result = await executeMindMap(createContext(), {
+      action: "update",
+      existingMap: JSON.parse(
+        JSON.stringify({
+          centerNodeId: "root",
+          nodes: [
+            { id: "root", text: "Root", children: ["root", "a"] },
+            { id: "a", text: "A", children: ["a"] },
+          ],
+        })
+      ),
+    });
+
+    assert.ok(result.data);
+    const root = result.data.nodes.find((n) => n.id === "root")!;
+    const a = result.data.nodes.find((n) => n.id === "a")!;
+    assert.deepStrictEqual(root.children, ["a"], "Self-reference should be dropped");
+    assert.deepStrictEqual(a.children, []);
+    console.log("✓ Self-parenting nodes are canonicalized away");
+  });
+
+  test("should reject duplicate node ids", async () => {
+    const result = await executeMindMap(createContext(), {
+      action: "add_node",
+      existingMap: JSON.parse(
+        JSON.stringify({
+          nodes: [
+            { id: "dup", text: "One" },
+            { id: "dup", text: "Two" },
+          ],
+        })
+      ),
+      parentNodeId: "One",
+      newIdea: "Child",
+    });
+
+    assert.strictEqual(result.data, undefined);
+    assert.ok(result.message?.includes("Existing map"));
+    console.log("✓ Duplicate ids are rejected");
+  });
+
+  test("should keep explicit connections and add the missing tree edges", async () => {
+    const result = await executeMindMap(createContext(), {
+      action: "update",
+      existingMap: JSON.parse(
+        JSON.stringify({
+          centerNodeId: "root",
+          nodes: [
+            { id: "root", text: "Root", children: ["a", "b"] },
+            { id: "a", text: "A" },
+            { id: "b", text: "B" },
+          ],
+          connections: [{ from: "a", to: "b", label: "cross link" }],
+        })
+      ),
+    });
+
+    assert.ok(result.data);
+    const edges = result.data.connections.map((c) => `${c.from}->${c.to}`);
+    assert.ok(edges.includes("a->b"), "Explicit cross link should survive");
+    assert.ok(edges.includes("root->a") && edges.includes("root->b"), "Tree edges should be added");
+    assert.strictEqual(new Set(edges).size, edges.length, "No duplicate edges");
+    console.log("✓ Explicit and derived connections stay consistent");
+  });
+});
+
+describe("Mind Map Plugin - hostile arguments", () => {
+  test("should not throw when a node reference is not a string", async () => {
+    const created = await createTestMindMap();
+
+    const result = await executeMindMap(createContext(created), {
+      action: "add_node",
+      // The LLM occasionally sends a number where the schema says string
+      parentNodeId: JSON.parse("42"),
+      newIdea: "Nope",
+    });
+
+    assert.strictEqual(result.data, undefined);
+    assert.ok(result.message);
+    console.log("✓ Non-string node references are rejected, not thrown on");
+  });
+
+  test("should cap deeply nested ideas instead of overflowing the stack", async () => {
+    const DEPTH = 5000;
+    let deepest: IdeaInput = { text: "leaf" };
+    for (let i = 0; i < DEPTH; i++) {
+      deepest = { text: `level-${i}`, children: [deepest] };
+    }
+
+    const result = await executeMindMap(null, {
+      action: "create",
+      title: "Deep",
+      centralIdea: "Root",
+      ideas: [deepest],
+    });
+
+    assert.ok(result.data, "Should return a map rather than crashing");
+    // center + MAX_BRANCH_DEPTH levels, one node per level
+    assert.strictEqual(result.data.nodes.length, 11);
+    console.log(`✓ Deep nesting capped at ${result.data.nodes.length} nodes`);
+  });
+});
+
 describe("Mind Map Plugin - hierarchical create", () => {
+  test("should keep the flat create layout unchanged", async () => {
+    const result = await executeMindMap(createContext(), {
+      action: "create",
+      title: "Flat",
+      centralIdea: "Center",
+      ideas: ["A", "B", "C"],
+    });
+
+    assert.ok(result.data);
+    const [center, ...branches] = result.data.nodes;
+    assert.strictEqual(center.x, 400);
+    assert.strictEqual(center.y, 300);
+    branches.forEach((node, index) => {
+      const angle = (2 * Math.PI * index) / branches.length - Math.PI / 2;
+      assert.ok(Math.abs(node.x - (400 + 200 * Math.cos(angle))) < 1e-9);
+      assert.ok(Math.abs(node.y - (300 + 200 * Math.sin(angle))) < 1e-9);
+    });
+    console.log("✓ Flat create keeps its original circular layout");
+  });
+
+  test("should prefer an exact label over a substring match", async () => {
+    const created = await executeMindMap(createContext(), {
+      action: "create",
+      title: "Overlap",
+      centralIdea: "Root",
+      ideas: ["Plan", "Planning details"],
+    });
+
+    const result = await executeMindMap(createContext(created), {
+      action: "add_node",
+      parentNodeId: "Plan",
+      newIdea: "Child",
+    });
+
+    assert.ok(result.data, "Exact label should resolve even though a substring also matches");
+    const parent = result.data.nodes.find((n) => n.text === "Plan")!;
+    const child = result.data.nodes.find((n) => n.text === "Child")!;
+    assert.ok(parent.children?.includes(child.id));
+    console.log("✓ Exact label wins over substring");
+  });
+
+
   test("should build three levels in a single create call", async () => {
     const result = await executeMindMap(createContext(), {
       action: "create",
