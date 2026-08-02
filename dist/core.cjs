@@ -1,1 +1,0 @@
-Object.defineProperty(exports,Symbol.toStringTag,{value:`Module`});const e=require("./samples-SH_sV67E.cjs");exports.SYSTEM_PROMPT=e.i,exports.TOOL_DEFINITION=e.a,exports.TOOL_NAME=e.o,exports.executeMindMap=e.n,exports.pluginCore=e.r,exports.samples=e.t;

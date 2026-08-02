@@ -35,6 +35,7 @@
   "scripts": {
     "dev": "vite",
     "dev:react": "vite --config vite.config.react.ts",
+    "prepare": "yarn build",
     "build": "vite build && vue-tsc -p tsconfig.build.json --emitDeclarationOnly && tsc -p tsconfig.react.json --emitDeclarationOnly",
     "typecheck": "vue-tsc --noEmit && tsc -p tsconfig.react.json --noEmit",
     "lint": "eslint src demo",
