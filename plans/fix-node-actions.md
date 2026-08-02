@@ -21,10 +21,10 @@ MulmoClaude では `execute()` はクライアントで呼ばれず、全て `/a
 
 したがって完全な解決は2リポにまたがる:
 
-| 層 | 変更 |
-|---|---|
-| このリポ | 落ちない / ラベルでノードを解決できる / 1回の create で階層を作れる |
-| mulmoclaude | セッションの直近 mindmap 結果を `context.currentResult` として渡す |
+| 層 | 変更 | 担当 |
+|---|---|---|
+| このリポ | 落ちない / ラベルでノードを解決できる / 1回の create で階層を作れる | この PR |
+| mulmoclaude | セッションの直近 mindmap 結果を `context.currentResult` として渡す | 向こうのリポ (receptron/mulmoclaude#2709 に調査結果をコメント) |
 
 ## 変更内容 (このリポ)
 
@@ -79,5 +79,5 @@ MulmoClaude では `execute()` はクライアントで呼ばれず、全て `/a
 2. 実装 + テスト
 3. `yarn typecheck` / `yarn lint` / `yarn build` / `yarn test`
 4. PR (このリポ)
-5. mulmoclaude 側 PR (session の直近結果を context に渡す)
+5. mulmoclaude#2709 に「ホスト側で何をすべきか」をコメント (実装は向こうのリポで行う)
 6. マージ後に npm publish → mulmoclaude の dependency bump

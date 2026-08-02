@@ -37,7 +37,8 @@
     "dev:react": "vite --config vite.config.react.ts",
     "build": "vite build && vue-tsc -p tsconfig.build.json --emitDeclarationOnly",
     "typecheck": "vue-tsc --noEmit",
-    "lint": "eslint src demo"
+    "lint": "eslint src demo",
+    "test": "tsx --test tests/*.test.ts"
   },
   "peerDependencies": {
     "gui-chat-protocol": "^1.2.0",
@@ -75,6 +76,7 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.4",
     "typescript": "~6.0.3",
     "vite": "^8.1.5",
     "vue": "^3.5.40",

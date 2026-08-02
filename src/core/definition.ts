@@ -18,7 +18,7 @@ export const TOOL_DEFINITION: ToolDefinition = {
         type: "string",
         enum: ["create", "add_node", "delete_node", "connect", "update", "rebalance"],
         description:
-          "Action to perform: create (new mind map), add_node (add idea to existing node), delete_node (remove a node and its connections), connect (link two nodes), update (modify existing map), rebalance (recalculate layout for better display)",
+          "Action to perform: create (new mind map, including its full hierarchy), add_node (add idea to existing node), delete_node (remove a node and its connections), connect (link two nodes), update (modify existing map), rebalance (recalculate layout for better display)",
       },
       title: {
         type: "string",
@@ -31,13 +31,32 @@ export const TOOL_DEFINITION: ToolDefinition = {
       },
       ideas: {
         type: "array",
-        items: { type: "string" },
         description:
-          "List of related ideas to add as branches from the central idea (for create action)",
+          "Branches of the central idea (for create action). Each entry is either a plain label, or an object { text, children } whose children follow the same shape — nest them to build the whole hierarchy, at any depth, in this single call.",
+        items: {
+          oneOf: [
+            { type: "string", description: "A branch with no sub-branches" },
+            {
+              type: "object",
+              description: "A branch with nested sub-branches",
+              properties: {
+                text: { type: "string", description: "Label of this branch" },
+                children: {
+                  type: "array",
+                  items: { type: "object" },
+                  description:
+                    "Sub-branches, same { text, children } shape. Omit for a leaf.",
+                },
+              },
+              required: ["text"],
+            },
+          ],
+        },
       },
       parentNodeId: {
         type: "string",
-        description: "ID of the parent node to attach new idea to (for add_node action)",
+        description:
+          "Parent node to attach the new idea to (for add_node action). Either the node ID or its label text.",
       },
       newIdea: {
         type: "string",
@@ -45,15 +64,16 @@ export const TOOL_DEFINITION: ToolDefinition = {
       },
       nodeIdToDelete: {
         type: "string",
-        description: "ID of the node to delete (for delete_node action). Children of this node will also be deleted.",
+        description:
+          "Node to delete (for delete_node action) — node ID or label text. Children of this node will also be deleted.",
       },
       fromNodeId: {
         type: "string",
-        description: "Source node ID for connection (for connect action)",
+        description: "Source node for connection (for connect action) — node ID or label text",
       },
       toNodeId: {
         type: "string",
-        description: "Target node ID for connection (for connect action)",
+        description: "Target node for connection (for connect action) — node ID or label text",
       },
       connectionLabel: {
         type: "string",
@@ -62,7 +82,7 @@ export const TOOL_DEFINITION: ToolDefinition = {
       existingMap: {
         type: "object",
         description:
-          "Optional: Current mind map state. Not required if updating the currently displayed mind map - the plugin will use the current state automatically.",
+          "Optional: Current mind map state. Not required when the host tracks the displayed mind map - the plugin uses that state automatically. Pass it only if a previous call reported that no mind map was available.",
       },
     },
     required: ["action"],
@@ -76,4 +96,4 @@ export const SYSTEM_PROMPT = `Use ${TOOL_NAME} to create visual mind maps when:
 - Planning projects or workflows
 - Summarizing discussions into visual format
 
-When creating a mind map, start with a clear central idea and branch out with related concepts. Use add_node to expand specific branches, delete_node to remove unwanted nodes, and connect to show relationships between non-adjacent ideas.`;
+When creating a mind map, start with a clear central idea and branch out with related concepts. Nest "ideas" entries ({ text, children }) to build a multi-level hierarchy in one create call — this works even on hosts that keep no mind map state between calls. Use add_node to expand specific branches, delete_node to remove unwanted nodes, and connect to show relationships between non-adjacent ideas; those actions take either a node ID or the node's label text.`;

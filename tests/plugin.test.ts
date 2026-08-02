@@ -178,7 +178,7 @@ describe("Mind Map Plugin - add_node action", () => {
     console.log("✓ Returns error when no existing map");
   });
 
-  test("should handle non-existent parent node gracefully", async () => {
+  test("should report an error listing the available nodes when the parent is unknown", async () => {
     const createResult = await createTestMindMap();
     assert.ok(createResult.data);
 
@@ -191,11 +191,229 @@ describe("Mind Map Plugin - add_node action", () => {
     const context = createContext(createResult);
     const result = await executeMindMap(context, addArgs);
 
-    // Should return the original map unchanged (no crash)
-    assert.ok(result.data, "Should return data");
-    assert.strictEqual(result.data.nodes.length, createResult.data.nodes.length);
+    // A silent no-op reads as success to the caller — fail loudly instead
+    assert.strictEqual(result.data, undefined, "Should not return a map");
+    assert.ok(result.message?.includes("non_existent_id"));
+    assert.ok(result.message?.includes("Idea 1"), "Should list the available labels");
 
-    console.log("✓ Handles non-existent parent node gracefully");
+    console.log("✓ Unknown parent node reports the available labels");
+  });
+});
+
+describe("Mind Map Plugin - missing context (mulmoclaude#2709)", () => {
+  test("should not throw when context is null", async () => {
+    const result = await executeMindMap(null, {
+      action: "add_node",
+      parentNodeId: "Idea 1",
+      newIdea: "New Idea",
+    });
+
+    assert.strictEqual(result.data, undefined);
+    assert.ok(result.message?.includes("Existing map"));
+    console.log("✓ null context returns an error instead of throwing");
+  });
+
+  test("should not throw when context is undefined for every action", async () => {
+    const actions: MindMapArgs["action"][] = [
+      "add_node",
+      "delete_node",
+      "connect",
+      "update",
+      "rebalance",
+    ];
+
+    for (const action of actions) {
+      const result = await executeMindMap(undefined, { action });
+      assert.strictEqual(result.data, undefined, `${action} should not return data`);
+      assert.ok(result.message, `${action} should return a message`);
+    }
+
+    console.log("✓ undefined context is handled by every action");
+  });
+
+  test("should still create a map with no context", async () => {
+    const result = await executeMindMap(null, {
+      action: "create",
+      title: "No Context",
+      centralIdea: "Center",
+      ideas: ["A"],
+    });
+
+    assert.ok(result.data);
+    assert.strictEqual(result.data.nodes.length, 2);
+    console.log("✓ create works without a context");
+  });
+});
+
+describe("Mind Map Plugin - node references by label", () => {
+  test("should add a node using the parent's label", async () => {
+    const createResult = await createTestMindMap();
+    assert.ok(createResult.data);
+
+    const result = await executeMindMap(createContext(createResult), {
+      action: "add_node",
+      parentNodeId: "Idea 2",
+      newIdea: "Sub of Idea 2",
+    });
+
+    assert.ok(result.data);
+    const parent = result.data.nodes.find((n) => n.text === "Idea 2");
+    const child = result.data.nodes.find((n) => n.text === "Sub of Idea 2");
+    assert.ok(parent && child);
+    assert.ok(parent.children?.includes(child.id), "Child should be attached to the label's node");
+    console.log("✓ add_node resolves a label");
+  });
+
+  test("should match a label case-insensitively and ignore surrounding space", async () => {
+    const createResult = await createTestMindMap();
+
+    const result = await executeMindMap(createContext(createResult), {
+      action: "add_node",
+      parentNodeId: "  idea 3 ",
+      newIdea: "Sub of Idea 3",
+    });
+
+    assert.ok(result.data);
+    const parent = result.data.nodes.find((n) => n.text === "Idea 3");
+    const child = result.data.nodes.find((n) => n.text === "Sub of Idea 3");
+    assert.ok(parent?.children?.includes(child!.id));
+    console.log("✓ Label matching is case- and space-insensitive");
+  });
+
+  test("should delete a node using its label", async () => {
+    const createResult = await createTestMindMap();
+    assert.ok(createResult.data);
+
+    const result = await executeMindMap(createContext(createResult), {
+      action: "delete_node",
+      nodeIdToDelete: "Idea 1",
+    });
+
+    assert.ok(result.data);
+    assert.strictEqual(result.data.nodes.length, createResult.data.nodes.length - 1);
+    assert.ok(!result.data.nodes.some((n) => n.text === "Idea 1"));
+    console.log("✓ delete_node resolves a label");
+  });
+
+  test("should refuse to delete the center node addressed by label", async () => {
+    const createResult = await createTestMindMap();
+
+    const result = await executeMindMap(createContext(createResult), {
+      action: "delete_node",
+      nodeIdToDelete: "Central Idea",
+    });
+
+    assert.strictEqual(result.data, undefined);
+    assert.ok(result.message?.includes("center node"));
+    console.log("✓ Center node is protected when addressed by label");
+  });
+
+  test("should connect two nodes by label", async () => {
+    const createResult = await createTestMindMap();
+    assert.ok(createResult.data);
+
+    const result = await executeMindMap(createContext(createResult), {
+      action: "connect",
+      fromNodeId: "Idea 1",
+      toNodeId: "Idea 3",
+      connectionLabel: "supports",
+    });
+
+    assert.ok(result.data);
+    const from = result.data.nodes.find((n) => n.text === "Idea 1")!;
+    const to = result.data.nodes.find((n) => n.text === "Idea 3")!;
+    const connection = result.data.connections.find((c) => c.from === from.id && c.to === to.id);
+    assert.ok(connection);
+    assert.strictEqual(connection.label, "supports");
+    console.log("✓ connect resolves labels");
+  });
+
+  test("should report ambiguity instead of guessing", async () => {
+    const createResult = await executeMindMap(createContext(), {
+      action: "create",
+      title: "Ambiguous",
+      centralIdea: "Root",
+      ideas: ["Growth plan", "Growth risks"],
+    });
+    assert.ok(createResult.data);
+
+    const result = await executeMindMap(createContext(createResult), {
+      action: "add_node",
+      parentNodeId: "Growth",
+      newIdea: "Nope",
+    });
+
+    assert.strictEqual(result.data, undefined, "Should not modify the map");
+    assert.ok(result.message?.includes("Growth plan"));
+    assert.ok(result.message?.includes("Growth risks"));
+    console.log("✓ Ambiguous labels report the candidates");
+  });
+});
+
+describe("Mind Map Plugin - hierarchical create", () => {
+  test("should build three levels in a single create call", async () => {
+    const result = await executeMindMap(createContext(), {
+      action: "create",
+      title: "Logic Tree",
+      centralIdea: "Revenue",
+      ideas: [
+        {
+          text: "Marketing",
+          children: [{ text: "SNS", children: [{ text: "X" }, { text: "Instagram" }] }, { text: "Ads" }],
+        },
+        "Sales",
+      ],
+    });
+
+    assert.ok(result.data);
+    // Revenue + Marketing + SNS + X + Instagram + Ads + Sales
+    assert.strictEqual(result.data.nodes.length, 7);
+    assert.strictEqual(result.data.connections.length, 6);
+
+    const byText = (text: string) => result.data!.nodes.find((n) => n.text === text)!;
+    assert.ok(byText("Marketing").children?.includes(byText("SNS").id));
+    assert.ok(byText("SNS").children?.includes(byText("X").id));
+    assert.ok(byText("SNS").children?.includes(byText("Instagram").id));
+    assert.ok(byText("Marketing").children?.includes(byText("Ads").id));
+    assert.ok(byText("Revenue").children?.includes(byText("Sales").id));
+    console.log("✓ Nested ideas build a 3-level hierarchy in one call");
+  });
+
+  test("should keep every node inside the canvas", async () => {
+    const result = await executeMindMap(createContext(), {
+      action: "create",
+      title: "Deep",
+      centralIdea: "Root",
+      ideas: [
+        {
+          text: "L1",
+          children: [{ text: "L2", children: [{ text: "L3", children: [{ text: "L4" }] }] }],
+        },
+      ],
+    });
+
+    assert.ok(result.data);
+    assert.strictEqual(result.data.nodes.length, 5);
+    for (const node of result.data.nodes) {
+      assert.ok(node.x >= 0 && node.x <= 800, `x out of canvas: ${node.x}`);
+      assert.ok(node.y >= 0 && node.y <= 600, `y out of canvas: ${node.y}`);
+    }
+    console.log("✓ Deep hierarchies stay inside the canvas");
+  });
+
+  test("should skip empty or malformed branches", async () => {
+    const result = await executeMindMap(createContext(), {
+      action: "create",
+      title: "Messy",
+      centralIdea: "Root",
+      // The LLM occasionally emits blanks or objects without `text`
+      ideas: ["  ", { text: "Kept" }, { text: "   " }],
+    });
+
+    assert.ok(result.data);
+    assert.strictEqual(result.data.nodes.length, 2);
+    assert.strictEqual(result.data.nodes[1].text, "Kept");
+    console.log("✓ Blank branches are dropped");
   });
 });
 
