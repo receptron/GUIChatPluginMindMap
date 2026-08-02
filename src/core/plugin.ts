@@ -44,6 +44,21 @@ const CANVAS_HEIGHT = 600;
 const CENTER_X = CANVAS_WIDTH / 2;
 const CENTER_Y = CANVAS_HEIGHT / 2;
 const PADDING = 60;
+const ROOT_RADIUS = 200;
+const CENTER_COLOR = "#1F2937";
+
+// Cap for node labels listed back to the LLM when a reference can't be
+// resolved — a 100-node map would otherwise flood the tool response.
+const MAX_LISTED_NODES = 30;
+
+// Branch input comes from an LLM, so it is untrusted: cap the nesting so a
+// pathological payload can't exhaust the stack. A map deeper than this is
+// unreadable on an 800x600 canvas anyway.
+const MAX_BRANCH_DEPTH = 10;
+
+// Layout recursion follows a host-supplied tree, which can be far deeper than
+// anything this plugin creates; stop before the stack does.
+const MAX_LAYOUT_DEPTH = 50;
 
 function calculateNodePosition(
   index: number,
@@ -104,63 +119,114 @@ function clampPosition(x: number, y: number): { x: number; y: number } {
 /**
  * Get the depth of a node in the tree (center node = 0)
  */
-function getNodeDepth(
-  nodeId: string,
-  nodes: MindMapNode[],
-  centerNodeId: string,
-  visited: Set<string> = new Set()
-): number {
-  if (nodeId === centerNodeId) return 0;
-  if (visited.has(nodeId)) return 999; // Prevent cycles
+function getNodeDepth(nodeId: string, nodes: MindMapNode[], centerNodeId: string): number {
+  const visited = new Set<string>();
+  let current = nodeId;
+  let depth = 0;
 
-  visited.add(nodeId);
-
-  for (const node of nodes) {
-    if (node.children?.includes(nodeId)) {
-      return 1 + getNodeDepth(node.id, nodes, centerNodeId, visited);
-    }
+  while (current !== centerNodeId && !visited.has(current)) {
+    visited.add(current);
+    const parent = nodes.find((n) => n.children?.includes(current));
+    if (!parent) return depth + 1; // Default to depth 1 if parent not found
+    current = parent.id;
+    depth++;
   }
-  return 1; // Default to depth 1 if parent not found
+  return current === centerNodeId ? depth : depth + 1;
+}
+
+/** A parsed branch: label plus its (possibly empty) nested branches */
+interface IdeaBranch {
+  text: string;
+  children: IdeaBranch[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Tool arguments arrive from an LLM over HTTP: a field the schema types as a
+ *  string can still be a number, an object, or absent at runtime. */
+function readText(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function parseIdea(input: unknown, depth: number): IdeaBranch | null {
+  if (typeof input === "string") {
+    const text = readText(input);
+    return text ? { text, children: [] } : null;
+  }
+  if (!isRecord(input)) return null;
+  const text = readText(input.text);
+  if (!text) return null;
+  return {
+    text,
+    children: depth >= MAX_BRANCH_DEPTH ? [] : parseIdeas(input.children, depth + 1),
+  };
+}
+
+/** Accepts both the flat (`["a", "b"]`) and nested
+ *  (`[{ text: "a", children: [...] }]`) forms the tool schema allows. */
+function parseIdeas(input: unknown, depth = 1): IdeaBranch[] {
+  if (!Array.isArray(input)) return [];
+  return input
+    .map((entry) => parseIdea(entry, depth))
+    .filter((branch): branch is IdeaBranch => branch !== null);
+}
+
+function branchPosition(
+  parent: MindMapNode,
+  index: number,
+  totalSiblings: number,
+  depth: number
+): { x: number; y: number } {
+  if (depth === 1) {
+    return calculateNodePosition(index, totalSiblings, parent.x, parent.y, ROOT_RADIUS);
+  }
+  const raw = calculateChildPosition(parent.x, parent.y, index, totalSiblings, depth);
+  return clampPosition(raw.x, raw.y);
+}
+
+function appendBranches(
+  parent: MindMapNode,
+  branches: IdeaBranch[],
+  depth: number,
+  nodes: MindMapNode[],
+  connections: MindMapConnection[]
+): void {
+  branches.forEach((branch, index) => {
+    const pos = branchPosition(parent, index, branches.length, depth);
+    const node: MindMapNode = {
+      id: generateId(),
+      text: branch.text,
+      x: pos.x,
+      y: pos.y,
+      color: getColor(depth === 1 ? index : nodes.length),
+      children: [],
+    };
+    nodes.push(node);
+    parent.children?.push(node.id);
+    connections.push({ from: parent.id, to: node.id });
+    appendBranches(node, branch.children, depth + 1, nodes, connections);
+  });
 }
 
 function createMindMap(
   title: string,
   centralIdea: string,
-  ideas: string[]
+  ideas: IdeaBranch[]
 ): MindMapData {
-  const centerX = 400;
-  const centerY = 300;
-  const radius = 200;
-
   const centerNode: MindMapNode = {
     id: generateId(),
     text: centralIdea,
-    x: centerX,
-    y: centerY,
-    color: "#1F2937", // dark gray for center
+    x: CENTER_X,
+    y: CENTER_Y,
+    color: CENTER_COLOR,
     children: [],
   };
 
   const nodes: MindMapNode[] = [centerNode];
   const connections: MindMapConnection[] = [];
-
-  ideas.forEach((idea, index) => {
-    const pos = calculateNodePosition(index, ideas.length, centerX, centerY, radius);
-    const childNode: MindMapNode = {
-      id: generateId(),
-      text: idea,
-      x: pos.x,
-      y: pos.y,
-      color: getColor(index),
-      children: [],
-    };
-    nodes.push(childNode);
-    centerNode.children?.push(childNode.id);
-    connections.push({
-      from: centerNode.id,
-      to: childNode.id,
-    });
-  });
+  appendBranches(centerNode, ideas, 1, nodes, connections);
 
   return {
     title,
@@ -172,16 +238,12 @@ function createMindMap(
 
 function addNodeToMap(
   map: MindMapData,
-  parentNodeId: string,
+  parentNode: MindMapNode,
   newIdea: string
 ): MindMapData {
   const nodes = map.nodes || [];
   const connections = map.connections || [];
-
-  const parentNode = nodes.find((n) => n.id === parentNodeId);
-  if (!parentNode) {
-    return { ...map, nodes, connections };
-  }
+  const parentNodeId = parentNode.id;
 
   // Calculate how many siblings will exist after adding this node
   const currentSiblings = parentNode.children?.length || 0;
@@ -217,9 +279,12 @@ function addNodeToMap(
     children: [...(parentNode.children || []), newNode.id],
   };
 
+  // Replace in place rather than filter-and-append: a map that loses its
+  // center-first ordering reconstructs with the wrong center when a host
+  // hands back only ids and labels.
   return {
     ...map,
-    nodes: [...nodes.filter((n) => n.id !== parentNodeId), updatedParent, newNode],
+    nodes: [...nodes.map((n) => (n.id === parentNodeId ? updatedParent : n)), newNode],
     connections: [
       ...connections,
       { from: parentNodeId, to: newNode.id },
@@ -260,6 +325,7 @@ function rebalanceLayout(map: MindMapData): MindMapData {
   ) => {
     const parent = nodeMap.get(parentId);
     if (!parent || !parent.children || processedIds.has(parentId)) return;
+    if (depth > MAX_LAYOUT_DEPTH) return;
 
     processedIds.add(parentId);
     const childIds = parent.children.filter((id) => !processedIds.has(id));
@@ -299,10 +365,9 @@ function rebalanceLayout(map: MindMapData): MindMapData {
     });
   };
 
-  // Start positioning from center
-  const processedIds = new Set<string>();
-  processedIds.add(centerNodeId);
-  positionChildren(centerNodeId, 1, processedIds);
+  // `positionChildren` marks the center itself as processed; seeding the set
+  // with it made the first call return before positioning anything
+  positionChildren(centerNodeId, 1, new Set<string>());
 
   return {
     ...map,
@@ -349,18 +414,17 @@ function deleteNodeFromMap(
     return map;
   }
 
-  // Collect all node IDs to delete (the node and all its descendants)
+  // Collect all node IDs to delete (the node and all its descendants).
+  // Iterative: host-supplied children can be cyclic or thousands deep.
   const idsToDelete = new Set<string>();
-
-  function collectDescendants(nodeId: string) {
+  const pending = [nodeIdToDelete];
+  while (pending.length > 0) {
+    const nodeId = pending.pop() ?? "";
+    if (idsToDelete.has(nodeId)) continue;
     idsToDelete.add(nodeId);
     const node = nodes.find((n) => n.id === nodeId);
-    if (node?.children) {
-      node.children.forEach((childId) => collectDescendants(childId));
-    }
+    node?.children?.forEach((childId) => pending.push(childId));
   }
-
-  collectDescendants(nodeIdToDelete);
 
   // Filter out deleted nodes
   const remainingNodes = nodes
@@ -383,96 +447,250 @@ function deleteNodeFromMap(
   };
 }
 
+type NodeLookup =
+  | { kind: "found"; node: MindMapNode }
+  | { kind: "missing" }
+  | { kind: "ambiguous"; matches: MindMapNode[] };
+
 /**
- * Get existing map data from context or args
- * Prefers context.currentResult.data as it has full structure
- * Will initialize missing arrays (connections) if needed
+ * Resolve a node reference to a node.
+ * Callers (the LLM) rarely know the generated IDs, so a label is accepted
+ * too: exact ID, then exact text, then substring — all case-insensitive.
+ */
+function findNodeByRef(map: MindMapData, ref: string): NodeLookup {
+  const nodes = map.nodes || [];
+  const byId = nodes.find((n) => n.id === ref);
+  if (byId) return { kind: "found", node: byId };
+
+  const needle = ref.trim().toLowerCase();
+  if (!needle) return { kind: "missing" };
+
+  const byText = nodes.filter((n) => n.text.trim().toLowerCase() === needle);
+  const matches =
+    byText.length > 0
+      ? byText
+      : nodes.filter((n) => n.text.toLowerCase().includes(needle));
+
+  if (matches.length === 1) return { kind: "found", node: matches[0] };
+  if (matches.length > 1) return { kind: "ambiguous", matches };
+  return { kind: "missing" };
+}
+
+function listLabels(nodes: MindMapNode[]): string {
+  const labels = nodes.slice(0, MAX_LISTED_NODES).map((n) => `"${n.text}"`);
+  if (nodes.length > MAX_LISTED_NODES) labels.push("…");
+  return labels.join(", ");
+}
+
+function nodeLookupError(
+  map: MindMapData,
+  ref: string,
+  lookup: NodeLookup
+): ToolResult<MindMapData, MindMapJsonData> {
+  const message =
+    lookup.kind === "ambiguous"
+      ? `"${ref}" matches several nodes: ${listLabels(lookup.matches)}. Use the exact label or the node ID.`
+      : `No node matches "${ref}". Nodes in this mind map: ${listLabels(map.nodes || [])}`;
+  return {
+    toolName: TOOL_NAME,
+    message,
+    instructions:
+      "Tell the user which node could not be identified and ask them which of the listed nodes they meant.",
+  };
+}
+
+function isMindMapNode(value: unknown): value is MindMapNode {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.text === "string" &&
+    Number.isFinite(value.x) &&
+    Number.isFinite(value.y)
+  );
+}
+
+function isMindMapConnection(value: unknown): value is MindMapConnection {
+  return isRecord(value) && typeof value.from === "string" && typeof value.to === "string";
+}
+
+/** A complete map — every node carries a position. */
+function toMindMapData(value: unknown): MindMapData | null {
+  if (!isRecord(value) || !Array.isArray(value.nodes)) return null;
+  const parsed = value.nodes.filter(isMindMapNode);
+  if (parsed.length === 0 || parsed.length !== value.nodes.length) return null;
+  if (new Set(parsed.map((n) => n.id)).size !== parsed.length) return null;
+
+  // `children` is whatever the host stored: normalize it, or the layout and
+  // the delete cascade end up calling array methods on a string
+  const nodes = parsed.map((node) => ({ ...node, children: readIdList(node.children) }));
+
+  return {
+    title: typeof value.title === "string" ? value.title : "Mind Map",
+    nodes,
+    connections: Array.isArray(value.connections)
+      ? value.connections.filter(isMindMapConnection)
+      : [],
+    centerNodeId: typeof value.centerNodeId === "string" ? value.centerNodeId : "",
+  };
+}
+
+interface IdLabelEntry {
+  id: string;
+  text: string;
+  children?: unknown;
+}
+
+function isIdLabelEntry(value: unknown): value is IdLabelEntry {
+  return isRecord(value) && typeof value.id === "string" && typeof value.text === "string";
+}
+
+function readIdList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
+}
+
+/** Parent → children as the payload states it, taking declared `children` and
+ *  whatever its connection list implies. Either one alone recovers the tree. */
+function collectAdjacency(
+  entries: IdLabelEntry[],
+  connections: MindMapConnection[]
+): Map<string, string[]> {
+  const known = new Set(entries.map((e) => e.id));
+  const adjacency = new Map(
+    entries.map((e) => [e.id, readIdList(e.children).filter((id) => known.has(id))])
+  );
+  connections.forEach(({ from, to }) => {
+    const siblings = adjacency.get(from);
+    if (siblings && known.has(to) && !siblings.includes(to)) siblings.push(to);
+  });
+  return adjacency;
+}
+
+/** Reduce an untrusted graph to a tree: one parent per node, no cycles, and
+ *  everything reachable from the center. `children` drives the layout and the
+ *  cascading delete, so a cycle there would hang them; cross links survive in
+ *  `connections`. A payload with no relationships at all becomes a star. */
+function buildTree(
+  centerId: string,
+  ids: string[],
+  adjacency: Map<string, string[]>
+): Map<string, string[]> {
+  const tree = new Map(ids.map((id) => [id, new Array<string>()]));
+  const claimed = new Set([centerId]);
+  const queue = [centerId];
+  let cursor = 0;
+
+  const claim = (parent: string, child: string) => {
+    claimed.add(child);
+    tree.get(parent)?.push(child);
+    queue.push(child);
+  };
+
+  const walk = () => {
+    while (cursor < queue.length) {
+      const parent = queue[cursor++];
+      (adjacency.get(parent) ?? []).forEach((child) => {
+        if (!claimed.has(child)) claim(parent, child);
+      });
+    }
+  };
+
+  walk();
+  // What the center can't reach hangs off it — with its own subtree intact
+  ids.forEach((id) => {
+    if (claimed.has(id)) return;
+    claim(centerId, id);
+    walk();
+  });
+  return tree;
+}
+
+function childConnections(children: Map<string, string[]>): MindMapConnection[] {
+  return Array.from(children.entries()).flatMap(([from, ids]) => ids.map((to) => ({ from, to })));
+}
+
+/** Explicit connections first (they may carry labels and cross links), then any
+ *  tree edge they don't already cover — the two must not disagree. */
+function mergeConnections(
+  explicit: MindMapConnection[],
+  derived: MindMapConnection[]
+): MindMapConnection[] {
+  const edgeKey = (c: MindMapConnection) => `${c.from} ${c.to}`;
+  const seen = new Set(explicit.map(edgeKey));
+  return [...explicit, ...derived.filter((c) => !seen.has(edgeKey(c)))];
+}
+
+/** Last resort: the caller handed back nodes without positions — `jsonData`
+ *  echoed as `existingMap`, or a host that persists no layout. Ids survive, so
+ *  a follow-up edit still lands on the node the caller meant; the hierarchy
+ *  survives too when children or connections came along, and only a bare
+ *  id/label list degrades to a star around the center. */
+function reconstructFromIdLabels(value: unknown): MindMapData | null {
+  if (!isRecord(value) || !Array.isArray(value.nodes) || value.nodes.length === 0) return null;
+  const entries = value.nodes.filter(isIdLabelEntry);
+  if (entries.length !== value.nodes.length) return null;
+
+  const declaredCenterId = readText(value.centerNodeId);
+  const center = entries.find((e) => e.id === declaredCenterId) ?? entries[0];
+  const ids = entries.map((e) => e.id);
+  const known = new Set(ids);
+  if (known.size !== ids.length) return null; // duplicate ids: which node an edit meant is unknowable
+  const connections = Array.isArray(value.connections)
+    ? value.connections.filter(isMindMapConnection).filter((c) => known.has(c.from) && known.has(c.to))
+    : [];
+  const children = buildTree(center.id, ids, collectAdjacency(entries, connections));
+
+  let branchIndex = 0;
+  const nodes: MindMapNode[] = entries.map((entry) => ({
+    id: entry.id,
+    text: entry.text,
+    x: CENTER_X,
+    y: CENTER_Y,
+    color: entry.id === center.id ? CENTER_COLOR : getColor(branchIndex++),
+    children: children.get(entry.id) ?? [],
+  }));
+
+  return rebalanceLayout({
+    title: readText(value.title) || "Mind Map",
+    nodes,
+    connections: mergeConnections(connections, childConnections(children)),
+    centerNodeId: center.id,
+  });
+}
+
+/**
+ * Get existing map data from context or args.
+ * The context copy is preferred: it carries the full structure (positions,
+ * colors, connections) while args may hold only what the LLM echoed back.
+ *
+ * `context` is nullable on purpose: hosts that run the plugin without any
+ * client-side state (MulmoClaude's server bridge) pass an empty or missing
+ * context, and reading through it unguarded turned every non-create action
+ * into an HTTP 500.
  */
 function getExistingMapData(
-  context: ToolContext,
-  argsMap?: MindMapData
+  context: ToolContext | null | undefined,
+  argsMap?: unknown
 ): MindMapData | null {
-  // Prefer data from context (has full structure with positions, colors, connections)
-  const contextData = context.currentResult?.data as MindMapData | undefined;
+  return (
+    toMindMapData(context?.currentResult?.data) ??
+    toMindMapData(argsMap) ??
+    reconstructFromIdLabels(context?.currentResult?.data) ??
+    reconstructFromIdLabels(argsMap)
+  );
+}
 
-  console.log("[MindMap Debug] getExistingMapData:", {
-    contextDataExists: !!contextData,
-    contextDataNodes: contextData?.nodes?.length,
-    argsMapExists: !!argsMap,
-    argsMapNodes: argsMap?.nodes?.length,
-    argsMapHasNodeCount: argsMap && "nodeCount" in argsMap,
-  });
-
-  if (contextData?.nodes && contextData.nodes.length > 0) {
-    console.log("[MindMap Debug] Using contextData with", contextData.nodes.length, "nodes");
-    // Ensure connections is an array
-    return {
-      ...contextData,
-      connections: contextData.connections || [],
-    };
-  }
-
-  // Fall back to args if it has nodes
-  if (argsMap?.nodes && argsMap.nodes.length > 0) {
-    console.log("[MindMap Debug] Using argsMap with", argsMap.nodes.length, "nodes");
-    // Ensure connections is an array
-    return {
-      ...argsMap,
-      connections: argsMap.connections || [],
-    };
-  }
-
-  // Last resort: try to reconstruct from argsMap even if nodes are simplified (from jsonData)
-  // This handles the case where LLM passes jsonData format
-  if (argsMap && "nodeCount" in argsMap && (argsMap as unknown as MindMapJsonData).nodes) {
-    console.log("[MindMap Debug] Reconstructing from jsonData format");
-    const jsonData = argsMap as unknown as MindMapJsonData;
-    // We can't fully reconstruct without positions, but we can at least not crash
-    const centerX = 400;
-    const centerY = 300;
-    const radius = 200;
-
-    const reconstructedNodes: MindMapNode[] = jsonData.nodes.map((n, index) => {
-      const angle = (2 * Math.PI * index) / jsonData.nodes.length - Math.PI / 2;
-      return {
-        id: n.id,
-        text: n.text,
-        x: index === 0 ? centerX : centerX + radius * Math.cos(angle),
-        y: index === 0 ? centerY : centerY + radius * Math.sin(angle),
-        color: index === 0 ? "#1F2937" : getColor(index),
-        children: [],
-      };
-    });
-
-    // Reconstruct connections from first node to all others
-    const reconstructedConnections: MindMapConnection[] = [];
-    if (reconstructedNodes.length > 1) {
-      const centerNode = reconstructedNodes[0];
-      for (let i = 1; i < reconstructedNodes.length; i++) {
-        reconstructedConnections.push({
-          from: centerNode.id,
-          to: reconstructedNodes[i].id,
-        });
-        centerNode.children = centerNode.children || [];
-        centerNode.children.push(reconstructedNodes[i].id);
-      }
-    }
-
-    console.log("[MindMap Debug] Reconstructed", reconstructedNodes.length, "nodes from jsonData");
-    return {
-      title: "Mind Map",
-      nodes: reconstructedNodes,
-      connections: reconstructedConnections,
-      centerNodeId: reconstructedNodes[0]?.id || "",
-    };
-  }
-
-  console.log("[MindMap Debug] No existing map found, returning null");
-  return null;
+function missingMapResult(): ToolResult<MindMapData, MindMapJsonData> {
+  return {
+    toolName: TOOL_NAME,
+    message:
+      "Existing map is required — no mind map is available to edit in this session.",
+    instructions:
+      'Create the mind map first with action "create". Nested "ideas" entries ({ text, children }) build every level in that single call.',
+  };
 }
 
 export const executeMindMap = async (
-  context: ToolContext,
+  context: ToolContext | null | undefined,
   args: MindMapArgs
 ): Promise<ToolResult<MindMapData, MindMapJsonData>> => {
   const { action } = args;
@@ -483,118 +701,106 @@ export const executeMindMap = async (
 
   switch (action) {
     case "create": {
-      if (!args.title || !args.centralIdea) {
+      const title = readText(args.title);
+      const centralIdea = readText(args.centralIdea);
+      if (!title || !centralIdea) {
         return {
           toolName: TOOL_NAME,
           message: "Title and central idea are required for creating a mind map",
           instructions: "Ask the user for the title and central concept.",
         };
       }
-      mapData = createMindMap(
-        args.title,
-        args.centralIdea,
-        args.ideas || []
-      );
-      message = `Created mind map "${args.title}" with ${mapData.nodes.length} nodes`;
+      mapData = createMindMap(title, centralIdea, parseIdeas(args.ideas));
+      message = `Created mind map "${title}" with ${mapData.nodes.length} nodes`;
       instructions =
         "Tell the user the mind map has been created. Ask if they want to add more ideas or create connections between concepts.";
       break;
     }
 
     case "add_node": {
-      const existingMap = getExistingMapData(context, args.existingMap as MindMapData);
-
-      // Debug logging
-      const debugInfo = {
-        hasContext: !!context,
-        hasCurrentResult: !!context?.currentResult,
-        currentResultToolName: context?.currentResult?.toolName,
-        currentResultHasData: !!context?.currentResult?.data,
-        currentResultDataNodes: (context?.currentResult?.data as MindMapData | undefined)?.nodes?.length,
-        argsHasExistingMap: !!args.existingMap,
-        argsExistingMapNodes: (args.existingMap as MindMapData | undefined)?.nodes?.length,
-        existingMapResult: existingMap ? `${existingMap.nodes?.length} nodes` : null,
-        parentNodeId: args.parentNodeId,
-        newIdea: args.newIdea,
-      };
-      console.log("[MindMap Debug] add_node:", JSON.stringify(debugInfo, null, 2));
-
-      if (!existingMap || !args.parentNodeId || !args.newIdea) {
-        const missing = [];
-        if (!existingMap) missing.push("existingMap");
-        if (!args.parentNodeId) missing.push("parentNodeId");
-        if (!args.newIdea) missing.push("newIdea");
+      const existingMap = getExistingMapData(context, args.existingMap);
+      if (!existingMap) return missingMapResult();
+      const parentRef = readText(args.parentNodeId);
+      const newIdea = readText(args.newIdea);
+      if (!parentRef || !newIdea) {
         return {
           toolName: TOOL_NAME,
-          message: `Missing: ${missing.join(", ")}. Debug: context.currentResult.data=${!!context?.currentResult?.data}, args.existingMap=${!!args.existingMap}`,
+          message: "Both parentNodeId and newIdea are required to add a node",
           instructions: "Ask the user which node to add the new idea to.",
         };
       }
-      mapData = addNodeToMap(
-        existingMap,
-        args.parentNodeId,
-        args.newIdea
-      );
-      message = `Added "${args.newIdea}" to the mind map`;
+      const parent = findNodeByRef(existingMap, parentRef);
+      if (parent.kind !== "found") {
+        return nodeLookupError(existingMap, parentRef, parent);
+      }
+      mapData = addNodeToMap(existingMap, parent.node, newIdea);
+      message = `Added "${newIdea}" to the mind map`;
       instructions =
         "Confirm the new idea was added. Ask if they want to continue expanding or explore other branches.";
       break;
     }
 
     case "delete_node": {
-      const existingMap = getExistingMapData(context, args.existingMap as MindMapData);
-      if (!existingMap || !args.nodeIdToDelete) {
+      const existingMap = getExistingMapData(context, args.existingMap);
+      if (!existingMap) return missingMapResult();
+      const targetRef = readText(args.nodeIdToDelete);
+      if (!targetRef) {
         return {
           toolName: TOOL_NAME,
-          message: "Existing map and node ID are required for deletion",
+          message: "nodeIdToDelete is required for deletion",
           instructions: "Ask which node should be deleted.",
         };
       }
-      if (args.nodeIdToDelete === existingMap.centerNodeId) {
+      const target = findNodeByRef(existingMap, targetRef);
+      if (target.kind !== "found") {
+        return nodeLookupError(existingMap, targetRef, target);
+      }
+      if (target.node.id === existingMap.centerNodeId) {
         return {
           toolName: TOOL_NAME,
           message: "Cannot delete the center node",
           instructions: "Tell the user that the center node cannot be deleted.",
         };
       }
-      const nodeToDelete = existingMap.nodes.find((n) => n.id === args.nodeIdToDelete);
-      mapData = deleteNodeFromMap(existingMap, args.nodeIdToDelete);
-      message = `Deleted "${nodeToDelete?.text || args.nodeIdToDelete}" from the mind map`;
+      mapData = deleteNodeFromMap(existingMap, target.node.id);
+      message = `Deleted "${target.node.text}" from the mind map`;
       instructions =
         "Confirm the node was deleted. Ask if they want to make any other changes.";
       break;
     }
 
     case "connect": {
-      const existingMap = getExistingMapData(context, args.existingMap as MindMapData);
-      if (!existingMap || !args.fromNodeId || !args.toNodeId) {
+      const existingMap = getExistingMapData(context, args.existingMap);
+      if (!existingMap) return missingMapResult();
+      const fromRef = readText(args.fromNodeId);
+      const toRef = readText(args.toNodeId);
+      if (!fromRef || !toRef) {
         return {
           toolName: TOOL_NAME,
-          message: "Existing map and both node IDs are required for connection",
+          message: "Both fromNodeId and toNodeId are required for connection",
           instructions: "Ask which concepts should be connected.",
         };
       }
+      const from = findNodeByRef(existingMap, fromRef);
+      if (from.kind !== "found") return nodeLookupError(existingMap, fromRef, from);
+      const to = findNodeByRef(existingMap, toRef);
+      if (to.kind !== "found") return nodeLookupError(existingMap, toRef, to);
+
       mapData = connectNodes(
         existingMap,
-        args.fromNodeId,
-        args.toNodeId,
-        args.connectionLabel
+        from.node.id,
+        to.node.id,
+        readText(args.connectionLabel) || undefined
       );
-      message = `Connected nodes in the mind map`;
+      message = `Connected "${from.node.text}" and "${to.node.text}"`;
       instructions =
         "Confirm the connection was created. Ask if they want to add more relationships.";
       break;
     }
 
     case "update": {
-      const existingMap = getExistingMapData(context, args.existingMap as MindMapData);
-      if (!existingMap) {
-        return {
-          toolName: TOOL_NAME,
-          message: "Existing map is required for update",
-          instructions: "The mind map data is missing.",
-        };
-      }
+      const existingMap = getExistingMapData(context, args.existingMap);
+      if (!existingMap) return missingMapResult();
       mapData = existingMap;
       message = "Mind map updated";
       instructions = "The mind map has been refreshed.";
@@ -602,14 +808,8 @@ export const executeMindMap = async (
     }
 
     case "rebalance": {
-      const existingMap = getExistingMapData(context, args.existingMap as MindMapData);
-      if (!existingMap) {
-        return {
-          toolName: TOOL_NAME,
-          message: "Existing map is required for rebalance",
-          instructions: "The mind map data is missing.",
-        };
-      }
+      const existingMap = getExistingMapData(context, args.existingMap);
+      if (!existingMap) return missingMapResult();
       mapData = rebalanceLayout(existingMap);
       message = `Mind map layout rebalanced with ${mapData.nodes.length} nodes`;
       instructions = "The mind map layout has been optimized for better readability.";
@@ -630,6 +830,7 @@ export const executeMindMap = async (
   const jsonData: MindMapJsonData = {
     nodeCount: nodes.length,
     connectionCount: connections.length,
+    centerNodeId: mapData.centerNodeId,
     nodes: nodes.map((n) => ({ id: n.id, text: n.text })),
   };
 
