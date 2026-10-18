@@ -1,6 +1,7 @@
 # @gui-chat-plugin/mindmap
 
 [![npm version](https://badge.fury.io/js/%40gui-chat-plugin%2Fmindmap.svg)](https://www.npmjs.com/package/@gui-chat-plugin/mindmap)
+[![scoria](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/receptron/GUIChatPluginMindMap/badges/scoria.json)](https://github.com/receptron/GUIChatPluginMindMap/actions/workflows/scoria.yml)
 
 Interactive mind map plugin for GUI Chat applications. Create visual mind maps for brainstorming and idea organization.
 
