@@ -4,9 +4,7 @@
     <div class="text-indigo-700 font-medium text-sm truncate">
       {{ title }}
     </div>
-    <div v-if="hasData" class="text-xs text-gray-500 mt-1">
-      {{ nodeCount }} ideas
-    </div>
+    <div v-if="hasData" class="text-xs text-gray-500 mt-1">{{ nodeCount }} ideas</div>
     <div v-else class="text-xs text-amber-600 mt-1">
       {{ props.result.message || "No data" }}
     </div>

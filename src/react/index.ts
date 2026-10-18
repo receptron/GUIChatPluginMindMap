@@ -20,13 +20,7 @@ export const plugin: ToolPluginReact<MindMapData, MindMapJsonData, MindMapArgs> 
 
 export type { MindMapData, MindMapArgs, MindMapJsonData } from "../core/types";
 
-export {
-  TOOL_NAME,
-  TOOL_DEFINITION,
-  SYSTEM_PROMPT,
-  executeMindMap,
-  pluginCore,
-} from "../core/plugin";
+export { TOOL_NAME, TOOL_DEFINITION, SYSTEM_PROMPT, executeMindMap, pluginCore } from "../core/plugin";
 
 export { samples } from "../core/samples";
 

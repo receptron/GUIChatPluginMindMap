@@ -215,13 +215,7 @@ describe("Mind Map Plugin - missing context (mulmoclaude#2709)", () => {
   });
 
   test("should not throw when context is undefined for every action", async () => {
-    const actions: MindMapArgs["action"][] = [
-      "add_node",
-      "delete_node",
-      "connect",
-      "update",
-      "rebalance",
-    ];
+    const actions: MindMapArgs["action"][] = ["add_node", "delete_node", "connect", "update", "rebalance"];
 
     for (const action of actions) {
       const result = await executeMindMap(undefined, { action });
@@ -395,7 +389,7 @@ describe("Mind Map Plugin - stateless round-trip", () => {
             { id: "n2", text: "Branch" },
             { id: "n1", text: "Center" },
           ],
-        })
+        }),
       ),
       parentNodeId: "Branch",
       newIdea: "Leaf",
@@ -455,7 +449,7 @@ describe("Mind Map Plugin - stateless round-trip", () => {
             { from: "root", to: "a" },
             { from: "a", to: "b" },
           ],
-        })
+        }),
       ),
       parentNodeId: "B",
       newIdea: "C",
@@ -475,7 +469,7 @@ describe("Mind Map Plugin - stateless round-trip", () => {
         JSON.stringify({
           nodeCount: 2,
           nodes: [{ id: "n1", text: "Center" }, { label: "oops" }],
-        })
+        }),
       ),
       parentNodeId: "Center",
       newIdea: "Child",
@@ -497,15 +491,18 @@ describe("Mind Map Plugin - stateless round-trip", () => {
             { id: "c", text: "Center", children: ["k"] },
             { id: "k", text: "Kid" },
           ],
-        })
+        }),
       ),
     };
 
-    const result = await executeMindMap({ currentResult: contextResult }, {
-      action: "add_node",
-      parentNodeId: "Kid",
-      newIdea: "Grandkid",
-    });
+    const result = await executeMindMap(
+      { currentResult: contextResult },
+      {
+        action: "add_node",
+        parentNodeId: "Kid",
+        newIdea: "Grandkid",
+      },
+    );
 
     assert.ok(result.data, "Context data without positions should still be usable");
     const kid = result.data.nodes.find((n) => n.id === "k")!;
@@ -602,7 +599,7 @@ describe("Mind Map Plugin - untrusted relationship graphs", () => {
     assert.deepStrictEqual(
       result.data.nodes.map((n) => n.id),
       ["root"],
-      "A and its descendant B should be gone, exactly once"
+      "A and its descendant B should be gone, exactly once",
     );
     console.log("✓ Cyclic children graphs cannot hang the delete cascade");
   });
@@ -618,13 +615,12 @@ describe("Mind Map Plugin - untrusted relationship graphs", () => {
             { id: "other", text: "Other", children: ["shared"] },
             { id: "shared", text: "Shared" },
           ],
-        })
+        }),
       ),
     });
 
     assert.ok(result.data);
-    const parentCount = (id: string) =>
-      result.data!.nodes.filter((n) => n.children?.includes(id)).length;
+    const parentCount = (id: string) => result.data!.nodes.filter((n) => n.children?.includes(id)).length;
     assert.strictEqual(parentCount("shared"), 1, "A node claimed twice should end up with one parent");
     for (const node of result.data.nodes) {
       const expected = node.id === result.data.centerNodeId ? 0 : 1;
@@ -644,7 +640,7 @@ describe("Mind Map Plugin - untrusted relationship graphs", () => {
             { id: "orphan", text: "Orphan", children: ["kid"] },
             { id: "kid", text: "Kid" },
           ],
-        })
+        }),
       ),
     });
 
@@ -667,13 +663,16 @@ describe("Mind Map Plugin - untrusted relationship graphs", () => {
             { id: "root", text: "Root", x: 400, y: 300, children: "oops" },
             { id: "kid", text: "Kid", x: 100, y: 100, children: 7 },
           ],
-        })
+        }),
       ),
       nodeIdToDelete: "Kid",
     });
 
     assert.ok(result.data, "A malformed children field must not throw");
-    assert.deepStrictEqual(result.data.nodes.map((n) => n.id), ["root"]);
+    assert.deepStrictEqual(
+      result.data.nodes.map((n) => n.id),
+      ["root"],
+    );
     console.log("✓ Non-array children fields are normalized");
   });
 
@@ -687,7 +686,7 @@ describe("Mind Map Plugin - untrusted relationship graphs", () => {
             { id: "dup", text: "One", x: 400, y: 300 },
             { id: "dup", text: "Two", x: 100, y: 100 },
           ],
-        })
+        }),
       ),
       parentNodeId: "One",
       newIdea: "Child",
@@ -707,7 +706,7 @@ describe("Mind Map Plugin - untrusted relationship graphs", () => {
             { id: "root", text: "Root", children: ["root", "a"] },
             { id: "a", text: "A", children: ["a"] },
           ],
-        })
+        }),
       ),
     });
 
@@ -728,7 +727,7 @@ describe("Mind Map Plugin - untrusted relationship graphs", () => {
             { id: "dup", text: "One" },
             { id: "dup", text: "Two" },
           ],
-        })
+        }),
       ),
       parentNodeId: "One",
       newIdea: "Child",
@@ -751,7 +750,7 @@ describe("Mind Map Plugin - untrusted relationship graphs", () => {
             { id: "b", text: "B" },
           ],
           connections: [{ from: "a", to: "b", label: "cross link" }],
-        })
+        }),
       ),
     });
 
@@ -843,7 +842,6 @@ describe("Mind Map Plugin - hierarchical create", () => {
     console.log("✓ Exact label wins over substring");
   });
 
-
   test("should build three levels in a single create call", async () => {
     const result = await executeMindMap(createContext(), {
       action: "create",
@@ -933,9 +931,7 @@ describe("Mind Map Plugin - connect action", () => {
     assert.ok(result.data);
     assert.strictEqual(result.data.connections.length, originalConnectionCount + 1);
 
-    const newConnection = result.data.connections.find(
-      (c) => c.from === node1.id && c.to === node2.id
-    );
+    const newConnection = result.data.connections.find((c) => c.from === node1.id && c.to === node2.id);
     assert.ok(newConnection, "New connection should exist");
     assert.strictEqual(newConnection.label, "relates to");
 

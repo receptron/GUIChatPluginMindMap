@@ -11,14 +11,7 @@ export const samples: ToolSample[] = [
       action: "create",
       title: "AI Applications",
       centralIdea: "Artificial Intelligence",
-      ideas: [
-        "Machine Learning",
-        "Natural Language Processing",
-        "Computer Vision",
-        "Robotics",
-        "Expert Systems",
-        "Speech Recognition",
-      ],
+      ideas: ["Machine Learning", "Natural Language Processing", "Computer Vision", "Robotics", "Expert Systems", "Speech Recognition"],
     },
   },
   {
@@ -27,13 +20,7 @@ export const samples: ToolSample[] = [
       action: "create",
       title: "Modern Web Development",
       centralIdea: "Web Development",
-      ideas: [
-        "Frontend",
-        "Backend",
-        "Database",
-        "DevOps",
-        "Security",
-      ],
+      ideas: ["Frontend", "Backend", "Database", "DevOps", "Security"],
     },
   },
   {
@@ -42,14 +29,7 @@ export const samples: ToolSample[] = [
       action: "create",
       title: "New Project",
       centralIdea: "Project Goals",
-      ideas: [
-        "Research",
-        "Design",
-        "Implementation",
-        "Testing",
-        "Deployment",
-        "Maintenance",
-      ],
+      ideas: ["Research", "Design", "Implementation", "Testing", "Deployment", "Maintenance"],
     },
   },
   {
@@ -58,13 +38,7 @@ export const samples: ToolSample[] = [
       action: "create",
       title: "Story Ideas",
       centralIdea: "Adventure Story",
-      ideas: [
-        "Main Character",
-        "Setting",
-        "Conflict",
-        "Plot Twists",
-        "Resolution",
-      ],
+      ideas: ["Main Character", "Setting", "Conflict", "Plot Twists", "Resolution"],
     },
   },
 ];

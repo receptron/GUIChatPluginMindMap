@@ -38,9 +38,7 @@ export function View({ selectedResult, sendTextMessage }: ViewProps) {
 
   const handleNodeClick = (node: MindMapNode) => {
     if (sendTextMessage) {
-      sendTextMessage(
-        `I want to expand the "${node.text}" branch. Add related sub-ideas.`
-      );
+      sendTextMessage(`I want to expand the "${node.text}" branch. Add related sub-ideas.`);
     }
   };
 
@@ -57,17 +55,11 @@ export function View({ selectedResult, sendTextMessage }: ViewProps) {
       <div className="size-full relative">
         {/* Title */}
         <div className="absolute top-4 left-4 z-10">
-          <h2 className="text-xl font-bold text-gray-800 bg-white/80 px-3 py-1 rounded-lg shadow">
-            {data.title}
-          </h2>
+          <h2 className="text-xl font-bold text-gray-800 bg-white/80 px-3 py-1 rounded-lg shadow">{data.title}</h2>
         </div>
 
         {/* SVG Mind Map */}
-        <svg
-          className="size-full"
-          viewBox={`0 0 ${VIEW_BOX_WIDTH} ${VIEW_BOX_HEIGHT}`}
-          preserveAspectRatio="xMidYMid meet"
-        >
+        <svg className="size-full" viewBox={`0 0 ${VIEW_BOX_WIDTH} ${VIEW_BOX_HEIGHT}`} preserveAspectRatio="xMidYMid meet">
           {/* Connections */}
           <g className="connections">
             {data.connections.map((conn) => {
@@ -119,12 +111,7 @@ export function View({ selectedResult, sendTextMessage }: ViewProps) {
                   className="drop-shadow-md"
                 />
                 {/* Node text */}
-                <text
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fill="white"
-                  className="text-sm font-medium select-none pointer-events-none"
-                >
+                <text textAnchor="middle" dominantBaseline="middle" fill="white" className="text-sm font-medium select-none pointer-events-none">
                   {truncateText(node.text, 20)}
                 </text>
               </g>
@@ -134,9 +121,7 @@ export function View({ selectedResult, sendTextMessage }: ViewProps) {
 
         {/* Instructions */}
         <div className="absolute bottom-4 left-4 right-4 text-center">
-          <p className="text-sm text-gray-500 bg-white/80 px-3 py-2 rounded-lg inline-block">
-            Click a node to expand it with new ideas
-          </p>
+          <p className="text-sm text-gray-500 bg-white/80 px-3 py-2 rounded-lg inline-block">Click a node to expand it with new ideas</p>
         </div>
       </div>
     </div>
