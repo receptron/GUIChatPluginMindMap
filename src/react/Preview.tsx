@@ -20,9 +20,7 @@ export function Preview({ result }: PreviewProps) {
       {hasData ? (
         <div className="text-xs text-gray-500 mt-1">{nodeCount} ideas</div>
       ) : (
-        <div className="text-xs text-amber-600 mt-1">
-          {result.message || "No data"}
-        </div>
+        <div className="text-xs text-amber-600 mt-1">{result.message || "No data"}</div>
       )}
     </div>
   );

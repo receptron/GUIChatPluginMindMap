@@ -23,13 +23,7 @@ export const DEFAULT_MOCK_RESPONSES: Record<string, MockResponse> = {
         action: "create",
         title: "AI Technologies",
         centralIdea: "Artificial Intelligence",
-        ideas: [
-          "Machine Learning",
-          "Deep Learning",
-          "Natural Language Processing",
-          "Computer Vision",
-          "Robotics",
-        ],
+        ideas: ["Machine Learning", "Deep Learning", "Natural Language Processing", "Computer Vision", "Robotics"],
       },
     },
   },
@@ -40,13 +34,7 @@ export const DEFAULT_MOCK_RESPONSES: Record<string, MockResponse> = {
         action: "create",
         title: "Project Ideas",
         centralIdea: "New Project",
-        ideas: [
-          "Research",
-          "Design",
-          "Implementation",
-          "Testing",
-          "Deployment",
-        ],
+        ideas: ["Research", "Design", "Implementation", "Testing", "Deployment"],
       },
     },
   },
@@ -61,10 +49,7 @@ export const DEFAULT_MOCK_RESPONSES: Record<string, MockResponse> = {
 /**
  * Find matching mock response based on user message
  */
-export const findMockResponse = (
-  userMessage: string,
-  mockResponses: Record<string, MockResponse> = DEFAULT_MOCK_RESPONSES
-): MockResponse => {
+export const findMockResponse = (userMessage: string, mockResponses: Record<string, MockResponse> = DEFAULT_MOCK_RESPONSES): MockResponse => {
   const lowerMessage = userMessage.toLowerCase();
 
   if (lowerMessage.includes("mindmap") || lowerMessage.includes("mind map") || lowerMessage.includes("visualize")) {
@@ -102,10 +87,7 @@ export const buildSystemPrompt = (basePrompt?: string, pluginPrompt?: string): s
 /**
  * Convert ChatMessage array to OpenAI API format
  */
-export const convertToApiMessages = (
-  messages: ChatMessage[],
-  systemPrompt: string
-): OpenAI.Chat.ChatCompletionMessageParam[] => {
+export const convertToApiMessages = (messages: ChatMessage[], systemPrompt: string): OpenAI.Chat.ChatCompletionMessageParam[] => {
   return [
     { role: "system", content: systemPrompt },
     ...messages.map((m) => {
@@ -141,9 +123,7 @@ export const convertToApiMessages = (
 /**
  * Build tools array for OpenAI API
  */
-export const buildToolsParam = (
-  toolDefinition: ToolDefinition
-): OpenAI.Chat.ChatCompletionTool[] => {
+export const buildToolsParam = (toolDefinition: ToolDefinition): OpenAI.Chat.ChatCompletionTool[] => {
   return [
     {
       type: "function",
@@ -162,7 +142,7 @@ export const buildToolsParam = (
 export const executePluginWithContext = async (
   execute: (context: ToolContext, args: unknown) => Promise<ToolResult>,
   args: unknown,
-  currentResult: ToolResult | null
+  currentResult: ToolResult | null,
 ): Promise<ToolResult> => {
   const context: ToolContext = {
     currentResult,
@@ -177,7 +157,7 @@ export const callOpenAI = async (
   client: OpenAI,
   model: string,
   messages: OpenAI.Chat.ChatCompletionMessageParam[],
-  tools: OpenAI.Chat.ChatCompletionTool[]
+  tools: OpenAI.Chat.ChatCompletionTool[],
 ): Promise<OpenAI.Chat.ChatCompletion> => {
   return await client.chat.completions.create({
     model,

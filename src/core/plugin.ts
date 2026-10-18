@@ -2,18 +2,8 @@
  * Mind Map Plugin Core
  */
 
-import type {
-  ToolPluginCore,
-  ToolContext,
-  ToolResult,
-} from "gui-chat-protocol";
-import type {
-  MindMapData,
-  MindMapArgs,
-  MindMapJsonData,
-  MindMapNode,
-  MindMapConnection,
-} from "./types";
+import type { ToolPluginCore, ToolContext, ToolResult } from "gui-chat-protocol";
+import type { MindMapData, MindMapArgs, MindMapJsonData, MindMapNode, MindMapConnection } from "./types";
 import { TOOL_NAME, TOOL_DEFINITION, SYSTEM_PROMPT } from "./definition";
 
 export { TOOL_NAME, TOOL_DEFINITION, SYSTEM_PROMPT } from "./definition";
@@ -60,13 +50,7 @@ const MAX_BRANCH_DEPTH = 10;
 // anything this plugin creates; stop before the stack does.
 const MAX_LAYOUT_DEPTH = 50;
 
-function calculateNodePosition(
-  index: number,
-  total: number,
-  centerX: number,
-  centerY: number,
-  radius: number
-): { x: number; y: number } {
+function calculateNodePosition(index: number, total: number, centerX: number, centerY: number, radius: number): { x: number; y: number } {
   const angle = (2 * Math.PI * index) / total - Math.PI / 2;
   return {
     x: centerX + radius * Math.cos(angle),
@@ -78,13 +62,7 @@ function calculateNodePosition(
  * Calculate position for a child node relative to its parent
  * Spreads children in an arc on the opposite side from the center
  */
-function calculateChildPosition(
-  parentX: number,
-  parentY: number,
-  childIndex: number,
-  totalSiblings: number,
-  depth: number
-): { x: number; y: number } {
+function calculateChildPosition(parentX: number, parentY: number, childIndex: number, totalSiblings: number, depth: number): { x: number; y: number } {
   // Direction from center to parent (this is the "outward" direction)
   const dx = parentX - CENTER_X;
   const dy = parentY - CENTER_Y;
@@ -168,17 +146,10 @@ function parseIdea(input: unknown, depth: number): IdeaBranch | null {
  *  (`[{ text: "a", children: [...] }]`) forms the tool schema allows. */
 function parseIdeas(input: unknown, depth = 1): IdeaBranch[] {
   if (!Array.isArray(input)) return [];
-  return input
-    .map((entry) => parseIdea(entry, depth))
-    .filter((branch): branch is IdeaBranch => branch !== null);
+  return input.map((entry) => parseIdea(entry, depth)).filter((branch): branch is IdeaBranch => branch !== null);
 }
 
-function branchPosition(
-  parent: MindMapNode,
-  index: number,
-  totalSiblings: number,
-  depth: number
-): { x: number; y: number } {
+function branchPosition(parent: MindMapNode, index: number, totalSiblings: number, depth: number): { x: number; y: number } {
   if (depth === 1) {
     return calculateNodePosition(index, totalSiblings, parent.x, parent.y, ROOT_RADIUS);
   }
@@ -186,13 +157,7 @@ function branchPosition(
   return clampPosition(raw.x, raw.y);
 }
 
-function appendBranches(
-  parent: MindMapNode,
-  branches: IdeaBranch[],
-  depth: number,
-  nodes: MindMapNode[],
-  connections: MindMapConnection[]
-): void {
+function appendBranches(parent: MindMapNode, branches: IdeaBranch[], depth: number, nodes: MindMapNode[], connections: MindMapConnection[]): void {
   branches.forEach((branch, index) => {
     const pos = branchPosition(parent, index, branches.length, depth);
     const node: MindMapNode = {
@@ -210,11 +175,7 @@ function appendBranches(
   });
 }
 
-function createMindMap(
-  title: string,
-  centralIdea: string,
-  ideas: IdeaBranch[]
-): MindMapData {
+function createMindMap(title: string, centralIdea: string, ideas: IdeaBranch[]): MindMapData {
   const centerNode: MindMapNode = {
     id: generateId(),
     text: centralIdea,
@@ -236,11 +197,7 @@ function createMindMap(
   };
 }
 
-function addNodeToMap(
-  map: MindMapData,
-  parentNode: MindMapNode,
-  newIdea: string
-): MindMapData {
+function addNodeToMap(map: MindMapData, parentNode: MindMapNode, newIdea: string): MindMapData {
   const nodes = map.nodes || [];
   const connections = map.connections || [];
   const parentNodeId = parentNode.id;
@@ -254,13 +211,7 @@ function addNodeToMap(
   const depth = getNodeDepth(parentNodeId, nodes, map.centerNodeId || "") + 1;
 
   // Calculate position using the improved algorithm
-  const rawPos = calculateChildPosition(
-    parentNode.x,
-    parentNode.y,
-    newSiblingIndex,
-    totalSiblingsAfter,
-    depth
-  );
+  const rawPos = calculateChildPosition(parentNode.x, parentNode.y, newSiblingIndex, totalSiblingsAfter, depth);
 
   // Clamp to canvas bounds
   const pos = clampPosition(rawPos.x, rawPos.y);
@@ -285,10 +236,7 @@ function addNodeToMap(
   return {
     ...map,
     nodes: [...nodes.map((n) => (n.id === parentNodeId ? updatedParent : n)), newNode],
-    connections: [
-      ...connections,
-      { from: parentNodeId, to: newNode.id },
-    ],
+    connections: [...connections, { from: parentNodeId, to: newNode.id }],
   };
 }
 
@@ -318,11 +266,7 @@ function rebalanceLayout(map: MindMapData): MindMapData {
   updatedCenter.y = CENTER_Y;
 
   // Build tree structure and position recursively
-  const positionChildren = (
-    parentId: string,
-    depth: number,
-    processedIds: Set<string>
-  ) => {
+  const positionChildren = (parentId: string, depth: number, processedIds: Set<string>) => {
     const parent = nodeMap.get(parentId);
     if (!parent || !parent.children || processedIds.has(parentId)) return;
     if (depth > MAX_LAYOUT_DEPTH) return;
@@ -337,24 +281,12 @@ function rebalanceLayout(map: MindMapData): MindMapData {
       if (depth === 1) {
         // First level: arrange in a circle
         const radius = 160;
-        const pos = calculateNodePosition(
-          index,
-          childIds.length,
-          parent.x,
-          parent.y,
-          radius
-        );
+        const pos = calculateNodePosition(index, childIds.length, parent.x, parent.y, radius);
         child.x = pos.x;
         child.y = pos.y;
       } else {
         // Deeper levels: use the fan-out algorithm
-        const pos = calculateChildPosition(
-          parent.x,
-          parent.y,
-          index,
-          childIds.length,
-          depth
-        );
+        const pos = calculateChildPosition(parent.x, parent.y, index, childIds.length, depth);
         const clamped = clampPosition(pos.x, pos.y);
         child.x = clamped.x;
         child.y = clamped.y;
@@ -375,37 +307,24 @@ function rebalanceLayout(map: MindMapData): MindMapData {
   };
 }
 
-function connectNodes(
-  map: MindMapData,
-  fromNodeId: string,
-  toNodeId: string,
-  label?: string
-): MindMapData {
+function connectNodes(map: MindMapData, fromNodeId: string, toNodeId: string, label?: string): MindMapData {
   const connections = map.connections || [];
 
-  const exists = connections.some(
-    (c) => c.from === fromNodeId && c.to === toNodeId
-  );
+  const exists = connections.some((c) => c.from === fromNodeId && c.to === toNodeId);
   if (exists) {
     return { ...map, connections };
   }
 
   return {
     ...map,
-    connections: [
-      ...connections,
-      { from: fromNodeId, to: toNodeId, label },
-    ],
+    connections: [...connections, { from: fromNodeId, to: toNodeId, label }],
   };
 }
 
 /**
  * Delete a node and all its descendants from the map
  */
-function deleteNodeFromMap(
-  map: MindMapData,
-  nodeIdToDelete: string
-): MindMapData {
+function deleteNodeFromMap(map: MindMapData, nodeIdToDelete: string): MindMapData {
   const nodes = map.nodes || [];
   const connections = map.connections || [];
 
@@ -436,9 +355,7 @@ function deleteNodeFromMap(
     }));
 
   // Filter out connections involving deleted nodes
-  const remainingConnections = connections.filter(
-    (c) => !idsToDelete.has(c.from) && !idsToDelete.has(c.to)
-  );
+  const remainingConnections = connections.filter((c) => !idsToDelete.has(c.from) && !idsToDelete.has(c.to));
 
   return {
     ...map,
@@ -447,10 +364,7 @@ function deleteNodeFromMap(
   };
 }
 
-type NodeLookup =
-  | { kind: "found"; node: MindMapNode }
-  | { kind: "missing" }
-  | { kind: "ambiguous"; matches: MindMapNode[] };
+type NodeLookup = { kind: "found"; node: MindMapNode } | { kind: "missing" } | { kind: "ambiguous"; matches: MindMapNode[] };
 
 /**
  * Resolve a node reference to a node.
@@ -466,10 +380,7 @@ function findNodeByRef(map: MindMapData, ref: string): NodeLookup {
   if (!needle) return { kind: "missing" };
 
   const byText = nodes.filter((n) => n.text.trim().toLowerCase() === needle);
-  const matches =
-    byText.length > 0
-      ? byText
-      : nodes.filter((n) => n.text.toLowerCase().includes(needle));
+  const matches = byText.length > 0 ? byText : nodes.filter((n) => n.text.toLowerCase().includes(needle));
 
   if (matches.length === 1) return { kind: "found", node: matches[0] };
   if (matches.length > 1) return { kind: "ambiguous", matches };
@@ -482,11 +393,7 @@ function listLabels(nodes: MindMapNode[]): string {
   return labels.join(", ");
 }
 
-function nodeLookupError(
-  map: MindMapData,
-  ref: string,
-  lookup: NodeLookup
-): ToolResult<MindMapData, MindMapJsonData> {
+function nodeLookupError(map: MindMapData, ref: string, lookup: NodeLookup): ToolResult<MindMapData, MindMapJsonData> {
   const message =
     lookup.kind === "ambiguous"
       ? `"${ref}" matches several nodes: ${listLabels(lookup.matches)}. Use the exact label or the node ID.`
@@ -494,19 +401,12 @@ function nodeLookupError(
   return {
     toolName: TOOL_NAME,
     message,
-    instructions:
-      "Tell the user which node could not be identified and ask them which of the listed nodes they meant.",
+    instructions: "Tell the user which node could not be identified and ask them which of the listed nodes they meant.",
   };
 }
 
 function isMindMapNode(value: unknown): value is MindMapNode {
-  return (
-    isRecord(value) &&
-    typeof value.id === "string" &&
-    typeof value.text === "string" &&
-    Number.isFinite(value.x) &&
-    Number.isFinite(value.y)
-  );
+  return isRecord(value) && typeof value.id === "string" && typeof value.text === "string" && Number.isFinite(value.x) && Number.isFinite(value.y);
 }
 
 function isMindMapConnection(value: unknown): value is MindMapConnection {
@@ -527,9 +427,7 @@ function toMindMapData(value: unknown): MindMapData | null {
   return {
     title: typeof value.title === "string" ? value.title : "Mind Map",
     nodes,
-    connections: Array.isArray(value.connections)
-      ? value.connections.filter(isMindMapConnection)
-      : [],
+    connections: Array.isArray(value.connections) ? value.connections.filter(isMindMapConnection) : [],
     centerNodeId: typeof value.centerNodeId === "string" ? value.centerNodeId : "",
   };
 }
@@ -550,14 +448,9 @@ function readIdList(value: unknown): string[] {
 
 /** Parent → children as the payload states it, taking declared `children` and
  *  whatever its connection list implies. Either one alone recovers the tree. */
-function collectAdjacency(
-  entries: IdLabelEntry[],
-  connections: MindMapConnection[]
-): Map<string, string[]> {
+function collectAdjacency(entries: IdLabelEntry[], connections: MindMapConnection[]): Map<string, string[]> {
   const known = new Set(entries.map((e) => e.id));
-  const adjacency = new Map(
-    entries.map((e) => [e.id, readIdList(e.children).filter((id) => known.has(id))])
-  );
+  const adjacency = new Map(entries.map((e) => [e.id, readIdList(e.children).filter((id) => known.has(id))]));
   connections.forEach(({ from, to }) => {
     const siblings = adjacency.get(from);
     if (siblings && known.has(to) && !siblings.includes(to)) siblings.push(to);
@@ -569,11 +462,7 @@ function collectAdjacency(
  *  everything reachable from the center. `children` drives the layout and the
  *  cascading delete, so a cycle there would hang them; cross links survive in
  *  `connections`. A payload with no relationships at all becomes a star. */
-function buildTree(
-  centerId: string,
-  ids: string[],
-  adjacency: Map<string, string[]>
-): Map<string, string[]> {
+function buildTree(centerId: string, ids: string[], adjacency: Map<string, string[]>): Map<string, string[]> {
   const tree = new Map(ids.map((id) => [id, new Array<string>()]));
   const claimed = new Set([centerId]);
   const queue = [centerId];
@@ -610,10 +499,7 @@ function childConnections(children: Map<string, string[]>): MindMapConnection[] 
 
 /** Explicit connections first (they may carry labels and cross links), then any
  *  tree edge they don't already cover — the two must not disagree. */
-function mergeConnections(
-  explicit: MindMapConnection[],
-  derived: MindMapConnection[]
-): MindMapConnection[] {
+function mergeConnections(explicit: MindMapConnection[], derived: MindMapConnection[]): MindMapConnection[] {
   const edgeKey = (c: MindMapConnection) => `${c.from} ${c.to}`;
   const seen = new Set(explicit.map(edgeKey));
   return [...explicit, ...derived.filter((c) => !seen.has(edgeKey(c)))];
@@ -634,9 +520,7 @@ function reconstructFromIdLabels(value: unknown): MindMapData | null {
   const ids = entries.map((e) => e.id);
   const known = new Set(ids);
   if (known.size !== ids.length) return null; // duplicate ids: which node an edit meant is unknowable
-  const connections = Array.isArray(value.connections)
-    ? value.connections.filter(isMindMapConnection).filter((c) => known.has(c.from) && known.has(c.to))
-    : [];
+  const connections = Array.isArray(value.connections) ? value.connections.filter(isMindMapConnection).filter((c) => known.has(c.from) && known.has(c.to)) : [];
   const children = buildTree(center.id, ids, collectAdjacency(entries, connections));
 
   let branchIndex = 0;
@@ -667,10 +551,7 @@ function reconstructFromIdLabels(value: unknown): MindMapData | null {
  * context, and reading through it unguarded turned every non-create action
  * into an HTTP 500.
  */
-function getExistingMapData(
-  context: ToolContext | null | undefined,
-  argsMap?: unknown
-): MindMapData | null {
+function getExistingMapData(context: ToolContext | null | undefined, argsMap?: unknown): MindMapData | null {
   return (
     toMindMapData(context?.currentResult?.data) ??
     toMindMapData(argsMap) ??
@@ -682,17 +563,12 @@ function getExistingMapData(
 function missingMapResult(): ToolResult<MindMapData, MindMapJsonData> {
   return {
     toolName: TOOL_NAME,
-    message:
-      "Existing map is required — no mind map is available to edit in this session.",
-    instructions:
-      'Create the mind map first with action "create". Nested "ideas" entries ({ text, children }) build every level in that single call.',
+    message: "Existing map is required — no mind map is available to edit in this session.",
+    instructions: 'Create the mind map first with action "create". Nested "ideas" entries ({ text, children }) build every level in that single call.',
   };
 }
 
-export const executeMindMap = async (
-  context: ToolContext | null | undefined,
-  args: MindMapArgs
-): Promise<ToolResult<MindMapData, MindMapJsonData>> => {
+export const executeMindMap = async (context: ToolContext | null | undefined, args: MindMapArgs): Promise<ToolResult<MindMapData, MindMapJsonData>> => {
   const { action } = args;
 
   let mapData: MindMapData;
@@ -712,8 +588,7 @@ export const executeMindMap = async (
       }
       mapData = createMindMap(title, centralIdea, parseIdeas(args.ideas));
       message = `Created mind map "${title}" with ${mapData.nodes.length} nodes`;
-      instructions =
-        "Tell the user the mind map has been created. Ask if they want to add more ideas or create connections between concepts.";
+      instructions = "Tell the user the mind map has been created. Ask if they want to add more ideas or create connections between concepts.";
       break;
     }
 
@@ -735,8 +610,7 @@ export const executeMindMap = async (
       }
       mapData = addNodeToMap(existingMap, parent.node, newIdea);
       message = `Added "${newIdea}" to the mind map`;
-      instructions =
-        "Confirm the new idea was added. Ask if they want to continue expanding or explore other branches.";
+      instructions = "Confirm the new idea was added. Ask if they want to continue expanding or explore other branches.";
       break;
     }
 
@@ -764,8 +638,7 @@ export const executeMindMap = async (
       }
       mapData = deleteNodeFromMap(existingMap, target.node.id);
       message = `Deleted "${target.node.text}" from the mind map`;
-      instructions =
-        "Confirm the node was deleted. Ask if they want to make any other changes.";
+      instructions = "Confirm the node was deleted. Ask if they want to make any other changes.";
       break;
     }
 
@@ -786,15 +659,9 @@ export const executeMindMap = async (
       const to = findNodeByRef(existingMap, toRef);
       if (to.kind !== "found") return nodeLookupError(existingMap, toRef, to);
 
-      mapData = connectNodes(
-        existingMap,
-        from.node.id,
-        to.node.id,
-        readText(args.connectionLabel) || undefined
-      );
+      mapData = connectNodes(existingMap, from.node.id, to.node.id, readText(args.connectionLabel) || undefined);
       message = `Connected "${from.node.text}" and "${to.node.text}"`;
-      instructions =
-        "Confirm the connection was created. Ask if they want to add more relationships.";
+      instructions = "Confirm the connection was created. Ask if they want to add more relationships.";
       break;
     }
 
@@ -845,11 +712,7 @@ export const executeMindMap = async (
   };
 };
 
-export const pluginCore: ToolPluginCore<
-  MindMapData,
-  MindMapJsonData,
-  MindMapArgs
-> = {
+export const pluginCore: ToolPluginCore<MindMapData, MindMapJsonData, MindMapArgs> = {
   toolDefinition: TOOL_DEFINITION,
   execute: executeMindMap,
   generatingMessage: "Creating mind map...",

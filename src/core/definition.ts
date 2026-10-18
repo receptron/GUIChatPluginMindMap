@@ -26,8 +26,7 @@ export const TOOL_DEFINITION: ToolDefinition = {
       },
       centralIdea: {
         type: "string",
-        description:
-          "The central concept or main topic (required for create action)",
+        description: "The central concept or main topic (required for create action)",
       },
       ideas: {
         type: "array",
@@ -44,8 +43,7 @@ export const TOOL_DEFINITION: ToolDefinition = {
                 children: {
                   type: "array",
                   items: { type: "object" },
-                  description:
-                    "Sub-branches, same { text, children } shape. Omit for a leaf.",
+                  description: "Sub-branches, same { text, children } shape. Omit for a leaf.",
                 },
               },
               required: ["text"],
@@ -55,8 +53,7 @@ export const TOOL_DEFINITION: ToolDefinition = {
       },
       parentNodeId: {
         type: "string",
-        description:
-          "Parent node to attach the new idea to (for add_node action). Either the node ID or its label text.",
+        description: "Parent node to attach the new idea to (for add_node action). Either the node ID or its label text.",
       },
       newIdea: {
         type: "string",
@@ -64,8 +61,7 @@ export const TOOL_DEFINITION: ToolDefinition = {
       },
       nodeIdToDelete: {
         type: "string",
-        description:
-          "Node to delete (for delete_node action) — node ID or label text. Children of this node will also be deleted.",
+        description: "Node to delete (for delete_node action) — node ID or label text. Children of this node will also be deleted.",
       },
       fromNodeId: {
         type: "string",

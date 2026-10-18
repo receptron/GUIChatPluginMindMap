@@ -92,25 +92,13 @@
             :stroke="selectedNodeId === node.id ? '#FCD34D' : 'none'"
             :stroke-width="selectedNodeId === node.id ? 3 : 0"
           />
-          <text
-            fill="white"
-            text-anchor="middle"
-            dominant-baseline="middle"
-            font-size="10"
-            font-weight="500"
-          >
-            <tspan
-              v-for="(line, i) in splitText(node.text)"
-              :key="i"
-              x="0"
-              :y="textY(node.text, i)"
-            >
+          <text fill="white" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="500">
+            <tspan v-for="(line, i) in splitText(node.text)" :key="i" x="0" :y="textY(node.text, i)">
               {{ line }}
             </tspan>
           </text>
         </g>
       </svg>
-
     </div>
 
     <div v-else class="size-full flex items-center justify-center">
@@ -168,7 +156,7 @@ watch(
       mapData.value = JSON.parse(JSON.stringify(result.data));
     }
   },
-  { immediate: true, deep: true }
+  { immediate: true, deep: true },
 );
 
 function getNodeById(id: string): MindMapNode | undefined {
@@ -312,10 +300,7 @@ function addNode() {
   }
 }
 
-function calculateChildPosition(
-  parent: MindMapNode,
-  siblingIndex: number
-): { x: number; y: number } {
+function calculateChildPosition(parent: MindMapNode, siblingIndex: number): { x: number; y: number } {
   // Direction from center to parent
   const dx = parent.x - CX;
   const dy = parent.y - CY;
@@ -328,10 +313,7 @@ function calculateChildPosition(
   if (isCenter) {
     const angle = (2 * Math.PI * siblingIndex) / Math.max(totalSiblings, 4) - Math.PI / 2;
     const radius = 140;
-    return clampPosition(
-      CX + radius * Math.cos(angle),
-      CY + radius * Math.sin(angle)
-    );
+    return clampPosition(CX + radius * Math.cos(angle), CY + radius * Math.sin(angle));
   }
 
   // Spread children in an arc
@@ -341,10 +323,7 @@ function calculateChildPosition(
   const angle = startAngle + step * siblingIndex + step / 2;
   const radius = 90;
 
-  return clampPosition(
-    parent.x + radius * Math.cos(angle),
-    parent.y + radius * Math.sin(angle)
-  );
+  return clampPosition(parent.x + radius * Math.cos(angle), parent.y + radius * Math.sin(angle));
 }
 
 // Rebalance the layout
@@ -389,10 +368,7 @@ function rebalance() {
         const angle = (2 * Math.PI * i) / kids.length - Math.PI / 2;
         const kid = nodeMap.get(kidId);
         if (kid) {
-          const pos = clampPosition(
-            parent.x + radius * Math.cos(angle),
-            parent.y + radius * Math.sin(angle)
-          );
+          const pos = clampPosition(parent.x + radius * Math.cos(angle), parent.y + radius * Math.sin(angle));
           kid.x = pos.x;
           kid.y = pos.y;
         }
@@ -410,10 +386,7 @@ function rebalance() {
         const angle = start + step * i;
         const kid = nodeMap.get(kidId);
         if (kid) {
-          const pos = clampPosition(
-            parent.x + radius * Math.cos(angle),
-            parent.y + radius * Math.sin(angle)
-          );
+          const pos = clampPosition(parent.x + radius * Math.cos(angle), parent.y + radius * Math.sin(angle));
           kid.x = pos.x;
           kid.y = pos.y;
         }
